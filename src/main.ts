@@ -60,6 +60,7 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
 const settingsKey = (uid: string) => `asaar-settings-${uid}`
 
 function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] || character)) }
+const developerFooter = () => '<footer class="developer-footer"><span class="developer-mark">R</span><span>تم التطوير بواسطة إبراهيم المقداد</span><a href="tel:0937708649" dir="ltr">0937708649</a></footer>'
 function highlightProductName(value: string, search: string) {
   const term = search.trim()
   if (!term) return escapeHtml(value)
@@ -111,6 +112,7 @@ function renderAuth(error = '', signUp = false) {
         </div>
         <input name="password" type="password" autocomplete="current-password" minlength="6" placeholder="••••••••" required>
       </label>`}<p class="form-error">${escapeHtml(error)}</p><button class="primary-button" type="submit" id="auth-submit">${signUp ? 'إنشاء الحساب' : 'تسجيل الدخول'}</button><button class="text-button" type="button" id="toggle-auth">${signUp ? 'لديك حساب؟ تسجيل الدخول' : 'إنشاء حساب جديد'}</button></form></main>`
+  document.querySelector('.auth-page')?.insertAdjacentHTML('beforeend', developerFooter())
   document.querySelector('#toggle-auth')!.addEventListener('click', () => renderAuth('', !signUp))
   document.querySelectorAll<HTMLButtonElement>('.password-visibility-toggle').forEach(attachPasswordToggle)
   document.querySelector<HTMLFormElement>('#auth-form')!.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget as HTMLFormElement); const button = document.querySelector<HTMLButtonElement>('#auth-submit')!; button.disabled = true; button.textContent = 'جارٍ المتابعة...'; try { const email = String(form.get('email')); if (signUp) {
@@ -132,6 +134,7 @@ function renderAuth(error = '', signUp = false) {
 function renderProductsShell() {
   applyTheme(settings.darkMode)
   appRoot.innerHTML = `<main class="products-page"><header class="topbar"><div class="search-box">${svg('search')}<input id="search" type="search" placeholder="ابحث عن منتج..." autocomplete="off"></div><button class="icon-button topbar-install hidden" id="install-app-app" type="button" aria-label="تثبيت التطبيق" title="تثبيت التطبيق">${svg('download')}</button><button class="icon-button add-button" id="add-product" aria-label="إضافة منتج">${svg('plus')}</button><button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button></header><nav class="category-bar" id="category-bar" aria-label="الفئات"></nav><section class="products-list" id="products-list"></section><button class="load-more-products hidden" id="load-more-products" type="button"></button><div class="quick-nav" id="quick-nav"><button id="scroll-top" aria-label="إلى الأعلى">${svg('arrowUp')}</button><button id="scroll-bottom" aria-label="إلى الأسفل">${svg('arrowDown')}</button></div></main>`
+  document.querySelector('.products-page')?.insertAdjacentHTML('beforeend', developerFooter())
   document.querySelector<HTMLInputElement>('#search')!.addEventListener('input', () => { productDisplayLimit = productPageSize; updateProductList() })
   document.querySelector('#add-product')!.addEventListener('click', renderAddModal)
   document.querySelector('#open-settings')!.addEventListener('click', renderSettingsNew)
@@ -222,7 +225,7 @@ function updateInstallButton() {
 function updateNavigation() { const nav = document.querySelector<HTMLElement>('#quick-nav'); const top = document.querySelector<HTMLButtonElement>('#scroll-top'); const bottom = document.querySelector<HTMLButtonElement>('#scroll-bottom'); if (!nav || !top || !bottom) return; const atTop = window.scrollY < 80; const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80; top.classList.toggle('hidden', atTop); bottom.classList.toggle('hidden', atBottom); nav.classList.toggle('has-actions', !atTop || !atBottom) }
 function handleScroll() { updateNavigation(); const nav = document.querySelector<HTMLElement>('#quick-nav'); if (!nav) return; nav.classList.add('visible'); if (quickNavTimer) clearTimeout(quickNavTimer); quickNavTimer = setTimeout(() => nav.classList.remove('visible'), 3000) }
 
-const modal = (content: string) => { const element = document.createElement('div'); element.className = 'modal-backdrop'; element.innerHTML = `<section class="modal">${content}</section>`; element.addEventListener('click', (event) => { if (event.target === element) element.remove() }); document.body.append(element); return element }
+const modal = (content: string) => { const element = document.createElement('div'); element.className = 'modal-backdrop'; element.innerHTML = `<section class="modal">${content}</section>`; element.addEventListener('click', (event) => { if (event.target === element) element.remove() }); document.body.append(element); const applyCategoryPlaceholder = () => { const input = element.querySelector<HTMLInputElement>('#category-form input[name="name"]'); if (!input) return false; input.setAttribute('placeholder', 'اسم الفئة مثال: دوليب'); return true }; if (!applyCategoryPlaceholder()) { const observer = new MutationObserver(() => { if (applyCategoryPlaceholder()) observer.disconnect() }); observer.observe(element, { childList: true, subtree: true }) } return element }
 function renderCategoryField(selected: string | null = null) {
   const selectedCategory = selected ? categories.find((category) => category.id === selected) ?? null : null;
   const selectedCategoryId = selectedCategory?.id ?? '';

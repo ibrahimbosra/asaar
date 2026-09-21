@@ -10,6 +10,10 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-lineca
 .bootstrap { display: grid; place-items: center; align-content: center; gap: 17px; min-height: 100svh; color: var(--muted); font-size: 13px; }
 .bootstrap .brand-mark { margin: 0; }
 .auth-page { width: min(100% - 40px, 460px); min-height: 100svh; margin: auto; padding: 14vh 0 40px; }
+.developer-footer { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 7px; margin: 28px auto 0; padding: 14px 0 4px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.8; text-align: center; }
+.developer-footer a { color: var(--teal); font-weight: 800; text-decoration: none; }
+.developer-footer a:hover { text-decoration: underline; }
+.developer-mark { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1px solid currentColor; border-radius: 50%; color: var(--teal); font-size: 11px; font-weight: 800; line-height: 1; }
 .brand-header {
   display: grid;
   justify-items: center;
@@ -426,7 +430,8 @@ input::placeholder { color: #aeb8c0; }
 .switch-row input:checked + i { background: var(--teal); }
 .switch-row input:checked + i::after { transform: translateX(-19px); }
 .rate-field { margin-bottom: 17px; }
-.rate-field small { color: var(--muted); font-size: 10px; }
+.rate-field small { color: transparent; font-size: 0; }
+.rate-field small::after { color: var(--muted); content: 'كل 1 دولار أمريكي كم ليرة سورية يساوي؟'; font-size: 10px; }
 .account { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; margin-top: 23px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); direction: ltr; font-size: 12px; }
 .account > span { min-width: 0; overflow: hidden; direction: ltr; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .account .text-button { flex: 0 0 auto; min-height: 42px; padding: 0 14px; border: 1px solid rgba(231, 111, 81, .22); border-radius: 11px; background: #fff0ed; color: var(--coral); font-size: 12px; font-weight: 800; white-space: nowrap; }
@@ -436,6 +441,7 @@ input::placeholder { color: #aeb8c0; }
 .inline-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 9px; }
 .inline-form .primary-button { min-height: 44px; padding: 0 12px; font-size: 12px; }
 .category-list, .bulk-list { display: grid; gap: 8px; margin-top: 14px; max-height: 250px; overflow-y: auto; }
+.modal:has(.settings-tabs) .category-list { max-height: calc(100dvh - 190px); margin: 14px 4px 4px; padding-inline-end: 4px; }
 .category-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
 .category-name { display: flex; align-items: baseline; gap: 7px; min-width: 0; background: transparent; color: var(--ink); text-align: right; font-size: 13px; font-weight: 800; }
 .category-name span { color: var(--muted); font-size: 11px; font-weight: 600; white-space: nowrap; }
@@ -491,5 +497,7 @@ body.dark-mode .topbar-install::after { border-color: rgba(61, 170, 161, .32); }
 body.dark-mode .quick-nav button { border-color: #2b3b49; background: #18232d; color: #7de0d3; box-shadow: 0 7px 16px rgba(0, 0, 0, .28); }
 body.dark-mode .quick-nav button:hover { border-color: #3d7773; background: #253b43; }
 body.dark-mode .account { border-color: #2b3b49; }
+body.dark-mode .developer-footer { border-color: #2b3b49; }
+body.dark-mode .developer-mark { color: #7de0d3; }
 body.dark-mode .switch-row i { background: #334957; }
 body.dark-mode .switch-row input:checked + i { background: var(--teal); }
