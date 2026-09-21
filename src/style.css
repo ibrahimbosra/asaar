@@ -430,8 +430,7 @@ input::placeholder { color: #aeb8c0; }
 .switch-row input:checked + i { background: var(--teal); }
 .switch-row input:checked + i::after { transform: translateX(-19px); }
 .rate-field { margin-bottom: 17px; }
-.rate-field small { color: transparent; font-size: 0; }
-.rate-field small::after { color: var(--muted); content: 'كل 1 دولار أمريكي كم ليرة سورية يساوي؟'; font-size: 10px; }
+.rate-field small { color: var(--muted); font-size: 10px; }
 .account { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; margin-top: 23px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); direction: ltr; font-size: 12px; }
 .account > span { min-width: 0; overflow: hidden; direction: ltr; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .account .text-button { flex: 0 0 auto; min-height: 42px; padding: 0 14px; border: 1px solid rgba(231, 111, 81, .22); border-radius: 11px; background: #fff0ed; color: var(--coral); font-size: 12px; font-weight: 800; white-space: nowrap; }
