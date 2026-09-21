@@ -1,4 +1,4 @@
-const CACHE = 'asaar-shell-v4';
+const CACHE = 'asaar-shell-v5';
 const scopeUrl = new URL('./', self.registration.scope);
 const assetUrl = (path) => new URL(path, scopeUrl).toString();
 const SHELL = [assetUrl('./'), assetUrl('index.html'), assetUrl('manifest.webmanifest'), assetUrl('favicon.svg')];
