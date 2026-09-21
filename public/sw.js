@@ -1,7 +1,7 @@
-const CACHE = 'asaar-shell-v3';
+const CACHE = 'asaar-shell-v4';
 const scopeUrl = new URL('./', self.registration.scope);
 const assetUrl = (path) => new URL(path, scopeUrl).toString();
-const SHELL = [assetUrl('./'), assetUrl('index.html'), assetUrl('manifest.webmanifest'), assetUrl('favicon.svg'), assetUrl('icon-192.png'), assetUrl('icon-512.png')];
+const SHELL = [assetUrl('./'), assetUrl('index.html'), assetUrl('manifest.webmanifest'), assetUrl('favicon.svg')];
 
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('asaar-shell-') && key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
