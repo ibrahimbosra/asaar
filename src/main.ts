@@ -198,6 +198,7 @@ function updateInstallButton() {
   const appButton = document.querySelector<HTMLButtonElement>('#install-app-app')
   loginButton?.classList.toggle('hidden', !available || Boolean(currentUser))
   appButton?.classList.toggle('hidden', !available || !currentUser)
+  document.querySelector<HTMLElement>('.topbar')?.classList.toggle('with-install', available && Boolean(currentUser))
 }
 function updateNavigation() { const nav = document.querySelector<HTMLElement>('#quick-nav'); const top = document.querySelector<HTMLButtonElement>('#scroll-top'); const bottom = document.querySelector<HTMLButtonElement>('#scroll-bottom'); if (!nav || !top || !bottom) return; const atTop = window.scrollY < 80; const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80; top.classList.toggle('hidden', atTop); bottom.classList.toggle('hidden', atBottom); nav.classList.toggle('has-actions', !atTop || !atBottom) }
 function handleScroll() { updateNavigation(); const nav = document.querySelector<HTMLElement>('#quick-nav'); if (!nav) return; nav.classList.add('visible'); if (quickNavTimer) clearTimeout(quickNavTimer); quickNavTimer = setTimeout(() => nav.classList.remove('visible'), 3000) }
