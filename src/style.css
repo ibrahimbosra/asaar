@@ -167,7 +167,7 @@ input::placeholder { color: #aeb8c0; }
 .text-button { color: var(--teal); background: transparent; font-size: 13px; font-weight: 800; }
 .form-error, .modal-error { min-height: 17px; margin: 0; color: var(--coral); font-size: 12px; }
 .products-page { width: min(100% - 28px, 620px); margin: auto; padding: 0 0 70px; }
-.topbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: 1fr 42px 42px; gap: 8px; padding: 13px 0 12px; background: #f5f7f9ee; backdrop-filter: blur(14px); }
+.topbar { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: minmax(0, 1fr) 42px 42px 42px; gap: 8px; padding: 13px 0 12px; background: #f5f7f9ee; backdrop-filter: blur(14px); }
 .search-box { display: flex; align-items: center; gap: 8px; min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: #82919d; padding: 0 12px; }
 .search-box input { min-width: 0; border: 0; padding: 11px 0; box-shadow: none; }
 .category-bar { display: flex; gap: 8px; overflow-x: auto; margin: 0 -2px 7px; padding: 2px; scrollbar-width: none; }
@@ -179,6 +179,10 @@ input::placeholder { color: #aeb8c0; }
 .icon-button { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); }
 .topbar > .icon-button { align-self: center; }
 .add-button { border-color: var(--teal); background: var(--teal); color: #fff; }
+.topbar-install { position: relative; border-color: #9bcac5; background: #e4f3f0; color: var(--teal); animation: topbar-install-pulse 3.2s ease-out infinite; }
+.topbar-install::after { position: absolute; inset: -4px; border: 1px solid rgba(0, 125, 121, .24); border-radius: 15px; content: ''; pointer-events: none; animation: topbar-install-ring 3.2s ease-out infinite; }
+@keyframes topbar-install-pulse { 0%, 55%, 100% { box-shadow: 0 5px 14px #20304418; } 25% { box-shadow: 0 6px 18px rgba(0, 125, 121, .3); } }
+@keyframes topbar-install-ring { 0%, 55%, 100% { opacity: .2; transform: scale(.96); } 25% { opacity: .6; transform: scale(1.06); } }
 .list-head { display: flex; align-items: end; justify-content: space-between; margin: 8px 0 8px; }
 .list-head h1 { margin: 0; color: var(--ink); font-size: 27px; line-height: 1.25; }
 .list-head h1 span { color: var(--teal); font-size: 14px; vertical-align: middle; }
@@ -218,7 +222,7 @@ input::placeholder { color: #aeb8c0; }
 .floating-install:active { transform: translateY(1px) scale(.98); }
 @keyframes install-pulse { 0%, 55%, 100% { box-shadow: 0 10px 24px rgba(0, 106, 102, .25); } 25% { box-shadow: 0 10px 28px rgba(0, 125, 121, .38); } }
 @keyframes install-ring { 0%, 55%, 100% { opacity: .25; transform: scale(.96); } 25% { opacity: .65; transform: scale(1.04); } }
-@media (prefers-reduced-motion: reduce) { .floating-install, .floating-install::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .floating-install, .floating-install::before, .topbar-install, .topbar-install::after { animation: none; } }
 .products-list { display: grid; gap: 13px; }
 .load-more-products { display: block; width: 100%; min-height: 44px; margin: 14px 0 0; border: 1px solid #c5e2de; border-radius: 12px; background: #e4f3f0; color: var(--teal); font-size: 12px; font-weight: 800; }
 .load-more-products:hover { background: #d6eeea; }
@@ -372,9 +376,12 @@ input::placeholder { color: #aeb8c0; }
 .empty-icon { margin-bottom: 9px; color: var(--teal); font-family: serif; font-size: 48px; line-height: 1; }
 .empty-state h2 { margin: 0 0 5px; color: var(--ink); font-size: 18px; }
 .empty-state p { margin: 0; font-size: 12px; }
-.quick-nav { position: fixed; right: 17px; bottom: 22px; z-index: 4; display: grid; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s; }
+.quick-nav { position: fixed; right: 17px; bottom: 22px; z-index: 4; display: flex; flex-direction: row; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s; direction: ltr; }
 .quick-nav.visible { opacity: 1; pointer-events: auto; }
-.quick-nav button { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 11px; background: #fff; color: var(--teal); box-shadow: 0 5px 14px #20304418; }
+.quick-nav button { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 13px; background: #fff; color: var(--teal); box-shadow: 0 7px 16px #20304418; transition: transform .2s, border-color .2s, background .2s; }
+.quick-nav button:hover { border-color: #9bcac5; background: #f4fbfa; transform: translateY(-2px); }
+.quick-nav #scroll-bottom { order: 1; }
+.quick-nav #scroll-top { order: 2; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; align-items: end; background: #14233366; backdrop-filter: blur(3px); }
 .modal { position: relative; box-sizing: border-box; width: min(calc(100vw - 24px), 520px); max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); margin: auto; overflow: auto; border-radius: 20px 20px 0 0; background: #fff; padding: 28px 22px 24px; box-shadow: 0 -8px 30px #20304422; animation: sheet .25s ease both; }
 .modal h2 { margin: 3px 0 22px; color: var(--ink); font-size: 22px; overflow-wrap: anywhere; }
@@ -451,6 +458,10 @@ body.dark-mode .danger-button { background: #542b2d; border-color: #7a3b3d; colo
 body.dark-mode .load-more-products { border-color: #285f5d; background: #193b3a; color: #7de0d3; }
 body.dark-mode .floating-install { border-color: #3daaa1; background: linear-gradient(135deg, #087b77, #075b59); box-shadow: 0 10px 24px rgba(0, 0, 0, .32); }
 body.dark-mode .floating-install::before { border-color: rgba(61, 170, 161, .32); }
+body.dark-mode .topbar-install { border-color: #3d7773; background: #193b3a; color: #7de0d3; }
+body.dark-mode .topbar-install::after { border-color: rgba(61, 170, 161, .32); }
+body.dark-mode .quick-nav button { border-color: #2b3b49; background: #18232d; color: #7de0d3; box-shadow: 0 7px 16px rgba(0, 0, 0, .28); }
+body.dark-mode .quick-nav button:hover { border-color: #3d7773; background: #253b43; }
 body.dark-mode .account { border-color: #2b3b49; }
 body.dark-mode .switch-row i { background: #334957; }
 body.dark-mode .switch-row input:checked + i { background: var(--teal); }

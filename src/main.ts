@@ -26,7 +26,7 @@ let unsubscribeCategories: () => void = () => undefined
 let deferredInstall: BeforeInstallPromptEvent | null = null
 let quickNavTimer: ReturnType<typeof setTimeout> | undefined
 
-const icon = (name: string) => ({ plus: '<path d="M12 5v14M5 12h14"/>', settings: '<path d="M12 3.5a2 2 0 0 1 2 2v.2a6.8 6.8 0 0 1 1.8 1l.2-.1a2 2 0 1 1 2 3.5l-.2.1a6.8 6.8 0 0 1 0 2.1l.2.1a2 2 0 1 1-2 3.5l-.2-.1a6.8 6.8 0 0 1-1.8 1v.2a2 2 0 1 1-4 0v-.2a6.8 6.8 0 0 1-1.8-1l-.2.1a2 2 0 1 1-2-3.5l.2-.1a6.8 6.8 0 0 1 0-2.1l-.2-.1a2 2 0 1 1 2-3.5l.2.1a6.8 6.8 0 0 1 1.8-1v-.2a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12" r="2.5"/>', edit: '<path d="M4 20l4.5-1 9.4-9.4a2.1 2.1 0 0 0-3-3L5.5 16l-1.5 4Z"/><path d="m13.5 6.5 4 4"/>', trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', search: '<circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/>', download: '<path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/>', arrowUp: '<path d="m6 14 6-6 6 6"/>', arrowDown: '<path d="m6 10 6 6 6-6"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>' }[name] || '')
+const icon = (name: string) => ({ plus: '<path d="M12 5v14M5 12h14"/>', settings: '<path d="M12 3.5a2 2 0 0 1 2 2v.2a6.8 6.8 0 0 1 1.8 1l.2-.1a2 2 0 1 1 2 3.5l-.2.1a6.8 6.8 0 0 1 0 2.1l.2.1a2 2 0 1 1-2 3.5l-.2-.1a6.8 6.8 0 0 1-1.8 1v.2a2 2 0 1 1-4 0v-.2a6.8 6.8 0 0 1-1.8-1l-.2.1a2 2 0 1 1-2-3.5l.2-.1a6.8 6.8 0 0 1 0-2.1l-.2-.1a2 2 0 1 1 2-3.5l.2.1a6.8 6.8 0 0 1 1.8-1v-.2a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12" r="2.5"/>', edit: '<path d="M4 20l4.5-1 9.4-9.4a2.1 2.1 0 0 0-3-3L5.5 16l-1.5 4Z"/><path d="m13.5 6.5 4 4"/>', trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>', search: '<circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/>', download: '<path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/>', arrowUp: '<path d="M12 19V5m0 0-5 5m5-5 5 5"/>', arrowDown: '<path d="M12 5v14m0 0-5-5m5 5 5-5"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>' }[name] || '')
 const svg = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${icon(name)}</svg>`
 const money = (value: number) => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value) : '—'
 const syp = (value: number) => Number.isFinite(value) ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 0, useGrouping: true }).format(Math.round(value)) : '—'
@@ -125,14 +125,16 @@ function renderAuth(error = '', signUp = false) {
       await signInWithEmailAndPassword(auth, email, password)
     }
   } catch (submitError) { renderAuth(authErrorMessage(submitError), signUp) } })
+  updateInstallButton()
 }
 
 function renderProductsShell() {
   applyTheme(settings.darkMode)
-  appRoot.innerHTML = `<main class="products-page"><header class="topbar"><div class="search-box">${svg('search')}<input id="search" type="search" placeholder="ابحث عن منتج..." autocomplete="off"></div><button class="icon-button add-button" id="add-product" aria-label="إضافة منتج">${svg('plus')}</button><button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button></header><nav class="category-bar" id="category-bar" aria-label="الفئات"></nav><section class="products-list" id="products-list"></section><button class="load-more-products hidden" id="load-more-products" type="button"></button><div class="quick-nav" id="quick-nav"><button id="scroll-top" aria-label="إلى الأعلى">${svg('arrowUp')}</button><button id="scroll-bottom" aria-label="إلى الأسفل">${svg('arrowDown')}</button></div></main>`
+  appRoot.innerHTML = `<main class="products-page"><header class="topbar"><div class="search-box">${svg('search')}<input id="search" type="search" placeholder="ابحث عن منتج..." autocomplete="off"></div><button class="icon-button topbar-install hidden" id="install-app-app" type="button" aria-label="تثبيت التطبيق" title="تثبيت التطبيق">${svg('download')}</button><button class="icon-button add-button" id="add-product" aria-label="إضافة منتج">${svg('plus')}</button><button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button></header><nav class="category-bar" id="category-bar" aria-label="الفئات"></nav><section class="products-list" id="products-list"></section><button class="load-more-products hidden" id="load-more-products" type="button"></button><div class="quick-nav" id="quick-nav"><button id="scroll-top" aria-label="إلى الأعلى">${svg('arrowUp')}</button><button id="scroll-bottom" aria-label="إلى الأسفل">${svg('arrowDown')}</button></div></main>`
   document.querySelector<HTMLInputElement>('#search')!.addEventListener('input', () => { productDisplayLimit = productPageSize; updateProductList() })
   document.querySelector('#add-product')!.addEventListener('click', renderAddModal)
   document.querySelector('#open-settings')!.addEventListener('click', renderSettingsNew)
+  document.querySelector('#install-app-app')!.addEventListener('click', installPwa)
   document.querySelector('#scroll-top')!.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }))
   document.querySelector('#scroll-bottom')!.addEventListener('click', () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }))
   document.querySelector('#load-more-products')!.addEventListener('click', () => { productDisplayLimit += productPageSize; updateProductList() })
@@ -182,7 +184,7 @@ function renderProductsError(error: unknown) { const list = document.querySelect
 function renderInstallButton() {
   if (document.querySelector('#install-app')) return
   const button = document.createElement('button')
-  button.id = 'install-app'
+  button.id = 'install-app-login'
   button.className = 'install-button floating-install hidden'
   button.type = 'button'
   button.setAttribute('aria-label', 'تثبيت التطبيق')
@@ -190,7 +192,13 @@ function renderInstallButton() {
   button.addEventListener('click', installPwa)
   document.body.append(button)
 }
-function updateInstallButton() { const button = document.querySelector<HTMLButtonElement>('#install-app'); if (!button) return; button.classList.toggle('hidden', !deferredInstall || isStandalone()) }
+function updateInstallButton() {
+  const available = Boolean(deferredInstall) && !isStandalone()
+  const loginButton = document.querySelector<HTMLButtonElement>('#install-app-login')
+  const appButton = document.querySelector<HTMLButtonElement>('#install-app-app')
+  loginButton?.classList.toggle('hidden', !available || Boolean(currentUser))
+  appButton?.classList.toggle('hidden', !available || !currentUser)
+}
 function updateNavigation() { const nav = document.querySelector<HTMLElement>('#quick-nav'); const top = document.querySelector<HTMLButtonElement>('#scroll-top'); const bottom = document.querySelector<HTMLButtonElement>('#scroll-bottom'); if (!nav || !top || !bottom) return; const atTop = window.scrollY < 80; const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80; top.classList.toggle('hidden', atTop); bottom.classList.toggle('hidden', atBottom); nav.classList.toggle('has-actions', !atTop || !atBottom) }
 function handleScroll() { updateNavigation(); const nav = document.querySelector<HTMLElement>('#quick-nav'); if (!nav) return; nav.classList.add('visible'); if (quickNavTimer) clearTimeout(quickNavTimer); quickNavTimer = setTimeout(() => nav.classList.remove('visible'), 3000) }
 
