@@ -20,7 +20,7 @@ type Settings = {
   retailProfitPercentage: number
 }
 type BeforeInstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
-const defaultSettings: Settings = { syriaEnabled: false, exchangeRate: 0, darkMode: false, favoritesEnabled: false, retailPricesEnabled: false, retailProfitPercentage: 0 }
+const defaultSettings: Settings = { syriaEnabled: false, exchangeRate: 0, darkMode: false, favoritesEnabled: false, retailPricesEnabled: true, retailProfitPercentage: 0 }
 let currentUser: User | null = null
 let products: Product[] = []
 let categories: Category[] = []
@@ -85,7 +85,7 @@ function safeSettings(value: unknown): Settings {
     exchangeRate: typeof data?.exchangeRate === 'number' && Number.isFinite(data.exchangeRate) && data.exchangeRate > 0 ? data.exchangeRate : 0,
     darkMode: data?.darkMode === true,
     favoritesEnabled: data?.favoritesEnabled === true,
-    retailPricesEnabled: data?.retailPricesEnabled === true,
+    retailPricesEnabled: data?.retailPricesEnabled !== false,
     retailProfitPercentage,
   }
 }
