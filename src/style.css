@@ -268,11 +268,11 @@ input::placeholder { color: #aeb8c0; }
 }
 
 .product-image-trigger {
-  flex: 0 0 48px;
+  flex: 0 0 56px;
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 10px;
