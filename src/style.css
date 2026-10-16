@@ -487,6 +487,8 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .image-help-steps li > span:last-child { display: grid; gap: 3px; min-width: 0; }
 .image-help-steps strong { color: var(--ink); font-size: 13px; }
 .image-help-steps li > span:last-child > span { color: var(--muted); font-size: 12px; line-height: 1.65; }
+.image-help-link { color: var(--teal); font-weight: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.image-help-link:hover { color: var(--teal-dark); }
 .image-help-note { margin: 14px 0 0; border-right: 3px solid var(--teal); border-radius: 5px; background: rgba(0, 125, 121, .06); padding: 10px 12px; color: var(--ink); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
 .image-help-note code { color: var(--teal); font-size: 11px; }
 .product-image-preview { display: grid; justify-items: start; gap: 5px; }
