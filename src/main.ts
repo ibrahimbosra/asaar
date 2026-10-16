@@ -493,18 +493,20 @@ function productImageField(imageUrl = '') {
 }
 function showProductImageHelp(trigger: HTMLButtonElement) {
   if (document.querySelector('.image-help-backdrop')) return
-  const cloudinaryUrl = isStandalone() && /Android/i.test(navigator.userAgent)
-    ? 'intent://cloudinary.com/#Intent;scheme=https;action=android.intent.action.VIEW;S.browser_fallback_url=https%3A%2F%2Fcloudinary.com%2F;end'
+  const isAndroidPwa = isStandalone() && /Android/i.test(navigator.userAgent)
+  const cloudinaryUrl = isAndroidPwa
+    ? 'intent://cloudinary.com/#Intent;scheme=https;package=com.android.chrome;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fcloudinary.com%2F;end'
     : 'https://cloudinary.com/'
+  const cloudinaryTarget = isAndroidPwa ? '_self' : '_blank'
   const backdrop = document.createElement('div')
   backdrop.className = 'image-help-backdrop'
   backdrop.innerHTML = `
     <section class="image-help-dialog" role="dialog" aria-modal="true" aria-labelledby="image-help-title" dir="rtl">
       <button class="modal-close image-help-close" type="button" aria-label="إغلاق">${svg('close')}</button>
       <p class="eyebrow">دليل الصور</p>
-      <h2 id="image-help-title">إضافة صورة من <a class="image-help-link" href="${cloudinaryUrl}" target="_blank" rel="noopener noreferrer">Cloudinary</a></h2>
+      <h2 id="image-help-title">إضافة صورة من <a class="image-help-link" href="${cloudinaryUrl}" target="${cloudinaryTarget}" rel="noopener noreferrer">Cloudinary</a></h2>
       <ol class="image-help-steps">
-        <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/><path d="M16 3h5v5"/></svg></span><span><strong>ادخل إلى حسابك</strong><span>سجّل الدخول إلى حسابك في <a class="image-help-link" href="${cloudinaryUrl}" target="_blank" rel="noopener noreferrer">Cloudinary</a>.</span></span></li>
+        <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/><path d="M16 3h5v5"/></svg></span><span><strong>ادخل إلى حسابك</strong><span>سجّل الدخول إلى حسابك في <a class="image-help-link" href="${cloudinaryUrl}" target="${cloudinaryTarget}" rel="noopener noreferrer">Cloudinary</a>.</span></span></li>
         <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><path d="M12 16V9m0 0-3 3m3-3 3 3"/></svg></span><span><strong>ارفع صورة المنتج</strong><span>افتح Media Library، واختر رفع صورة من جهازك، ثم انتظر اكتمال الرفع.</span></span></li>
         <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12.5 5.5 15a3.5 3.5 0 0 0 5 5l4-4a3.5 3.5 0 0 0 0-5"/><path d="m16 11.5 2.5-2.5a3.5 3.5 0 0 0-5-5l-4 4a3.5 3.5 0 0 0 0 5"/><path d="m9 15 6-6"/></svg></span><span><strong>انسخ رابط الصورة المباشر</strong><span>افتح تفاصيل الصورة وانسخ <bdi dir="ltr">Secure URL</bdi>. لا تنسخ رابط صفحة لوحة التحكم.</span></span></li>
         <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="m4 7 8 6 8-6"/><path d="m8 16 2 2 5-5"/></svg></span><span><strong>الصق الرابط في المنتج</strong><span>عد إلى الموقع والصق الرابط في الحقل، وانتظر ظهور معاينة الصورة، ثم احفظ المنتج.</span></span></li>
