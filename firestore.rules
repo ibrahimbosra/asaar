@@ -1,14 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      match /products/{productId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
+    function canAccessUserData(userId) {
+      return request.auth != null && (
+        request.auth.token.email in ['mothanamsa@gmail.com', 'msalma@gmail.com']
+          ? userId == '8zgVSfgflNStj4rlBblTUKE7zi42'
+          : request.auth.uid == userId
+      );
     }
-    match /users/{userId}/categories/{categoryId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+    match /users/{userId} {
+      allow read, write: if canAccessUserData(userId);
+      match /{document=**} {
+        allow read, write: if canAccessUserData(userId);
+      }
     }
   }
 }

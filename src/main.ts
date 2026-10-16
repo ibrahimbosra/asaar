@@ -1,7 +1,7 @@
 import './style.css'
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, createUserWithEmailAndPassword, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 
 const firebaseConfig = { apiKey: 'AIzaSyAnaTxPXhxMI3A-U4IucbEDfQ8hOTbix_w', authDomain: 'msalma-1d983.firebaseapp.com', projectId: 'msalma-1d983', storageBucket: 'msalma-1d983.firebasestorage.app', messagingSenderId: '1029462661783', appId: '1:1029462661783:web:61a7c2fd8336326fab27d2' }
 const app = initializeApp(firebaseConfig)
@@ -9,7 +9,7 @@ const auth = getAuth(app)
 const db = getFirestore(app)
 const appRoot = document.querySelector<HTMLDivElement>('#app')!
 
-type Product = { id: string; name: string; price: number; number: number; storedNumber: boolean; categoryId: string | null; isFavorite: boolean }
+type Product = { id: string; name: string; price: number; number: number; storedNumber: boolean; categoryId: string | null; isFavorite: boolean; imageUrl?: string }
 type Category = { id: string; name: string }
 type Settings = {
   syriaEnabled: boolean
@@ -21,7 +21,10 @@ type Settings = {
 }
 type BeforeInstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
 const defaultSettings: Settings = { syriaEnabled: false, exchangeRate: 0, darkMode: false, favoritesEnabled: false, retailPricesEnabled: true, retailProfitPercentage: 0 }
+const sharedDataUserId = '8zgVSfgflNStj4rlBblTUKE7zi42'
+const sharedDataEmails = new Set(['mothanamsa@gmail.com', 'msalma@gmail.com'])
 let currentUser: User | null = null
+let dataUserId = ''
 let products: Product[] = []
 let categories: Category[] = []
 const productPageSize = 50
@@ -64,9 +67,24 @@ const naturalSort = <T extends NamedEntity>(a: T, b: T) => {
 const arabicSort = naturalSort
 const sortedCategories = () => categories.sort(naturalSort)
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
-const settingsKey = (uid: string) => `asaar-settings-${uid}`
+const settingsKey = (dataUserId: string) => `asaar-settings-${dataUserId}`
+
+function resolveDataUserId(user: User): string {
+  const email = user.email?.trim().toLowerCase() ?? ''
+  return sharedDataEmails.has(email) ? sharedDataUserId : user.uid
+}
 
 function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] || character)) }
+function normalizeProductImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const url = new URL(value.trim())
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname || url.username || url.password) return null
+    return url.href
+  } catch {
+    return null
+  }
+}
 function normalizeName(value: string) { return value.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('ar') }
 const developerFooter = () => '<footer class="developer-footer"><span class="developer-mark">R</span><span>تم التطوير بواسطة إبراهيم المقداد</span><a href="tel:0937708649" dir="ltr">0937708649</a></footer>'
 function highlightProductName(value: string, search: string) {
@@ -105,7 +123,7 @@ function applyStoredTheme() { for (const key of Object.keys(localStorage)) { if 
 function loadCachedSettings(uid: string): Settings { try { return safeSettings(JSON.parse(localStorage.getItem(settingsKey(uid)) || 'null')) } catch { return defaultSettings } }
 function saveCachedSettings(uid: string, value: Settings) { localStorage.setItem(settingsKey(uid), JSON.stringify(value)) }
 function stableNumber(id: string) { let hash = 0; for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0; return (hash % 900000) + 100000 }
-function parseProduct(id: string, data: Record<string, unknown>): Product | null { const name = typeof data.name === 'string' ? data.name.trim() : ''; const price = typeof data.price === 'number' && Number.isFinite(data.price) && data.price > 0 ? data.price : Number.NaN; if (!name) return null; const storedNumber = typeof data.number === 'number' && Number.isInteger(data.number) && data.number > 0; const categoryId = typeof data.categoryId === 'string' && data.categoryId.trim() ? data.categoryId : null; return { id, name, price, number: storedNumber ? data.number as number : stableNumber(id), storedNumber, categoryId, isFavorite: data.isFavorite === true } }
+function parseProduct(id: string, data: Record<string, unknown>): Product | null { const name = typeof data.name === 'string' ? data.name.trim() : ''; const price = typeof data.price === 'number' && Number.isFinite(data.price) && data.price > 0 ? data.price : Number.NaN; if (!name) return null; const storedNumber = typeof data.number === 'number' && Number.isInteger(data.number) && data.number > 0; const categoryId = typeof data.categoryId === 'string' && data.categoryId.trim() ? data.categoryId : null; const imageUrl = normalizeProductImageUrl(data.imageUrl); return { id, name, price, number: storedNumber ? data.number as number : stableNumber(id), storedNumber, categoryId, isFavorite: data.isFavorite === true, ...(imageUrl ? { imageUrl } : {}) } }
 function parseCategory(id: string, data: Record<string, unknown>): Category | null { const name = typeof data.name === 'string' ? data.name.trim() : ''; return name ? { id, name } : null }
 function friendlyError(error: unknown) { const code = typeof error === 'object' && error && 'code' in error ? String((error as { code: string }).code) : ''; return code.includes('network') || code.includes('unavailable') ? 'لا يوجد اتصال حاليًا. تحقق من الإنترنت وحاول مجددًا.' : 'تعذر حفظ التغيير. حاول مجددًا.' }
 function firestoreErrorMessage(error: unknown) { const code = typeof error === 'object' && error && 'code' in error ? String((error as { code: string }).code) : ''; if (code.includes('permission-denied')) return 'لا تملك صلاحية قراءة هذه المنتجات.'; if (code.includes('unauthenticated')) return 'انتهت جلسة تسجيل الدخول. سجّل الدخول مجددًا.'; if (code.includes('unavailable') || code.includes('network') || code.includes('deadline-exceeded')) return 'تعذر الاتصال حاليًا. تحقق من الإنترنت وحاول مجددًا.'; return 'تعذر تحميل المنتجات حاليًا. حاول مجددًا.' }
@@ -209,9 +227,12 @@ function updateProductList() {
     return `
     <article class="product-card ${isExactSearchMatch ? 'is-exact-search-match' : ''}" data-edit="${product.id}" tabindex="0" role="button" aria-label="تعديل ${escapeHtml(product.name)}">
       <div class="product-top">
-        <span class="product-category">${escapeHtml(categories.find((category) => category.id === product.categoryId)?.name || 'بدون فئة')}</span>
+        ${product.imageUrl ? `<button class="product-image-trigger" type="button" data-image-url="${escapeHtml(product.imageUrl)}" data-product-name="${escapeHtml(product.name)}" aria-label="تكبير صورة ${escapeHtml(product.name)}"><img src="${escapeHtml(product.imageUrl)}" alt="" loading="lazy"></button>` : ''}
+        <div class="product-info">
+          <h2 class="product-name">${highlightProductName(product.name, search)}</h2>
+          <span class="product-category">${escapeHtml(categories.find((category) => category.id === product.categoryId)?.name || 'بدون فئة')}</span>
+        </div>
         ${settings.favoritesEnabled ? `<button class="favorite-button ${product.isFavorite ? 'is-favorite' : ''}" data-favorite="${product.id}" type="button" aria-label="${product.isFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}" aria-pressed="${product.isFavorite}">${product.isFavorite ? '★' : '☆'}</button>` : ''}
-        <h2 class="product-name">${highlightProductName(product.name, search)}</h2>
       </div>
       <span class="product-number">${index + 1}</span>
       <div class="price-row wholesale-price-row">
@@ -233,9 +254,39 @@ function updateProductList() {
     card.addEventListener('click', openEdit)
     card.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEdit() } })
   })
+  list.querySelectorAll<HTMLButtonElement>('.product-image-trigger').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      showProductImage(button.dataset.imageUrl!, button.dataset.productName!, button)
+    })
+    button.addEventListener('keydown', (event) => { event.stopPropagation() })
+    button.querySelector('img')!.addEventListener('error', () => button.remove(), { once: true })
+  })
   list.querySelectorAll<HTMLButtonElement>('[data-favorite]').forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); void toggleFavorite(button.dataset.favorite!) }))
   const loadMore = document.querySelector<HTMLButtonElement>('#load-more-products')
   if (loadMore) { const remaining = visible.length - displayed.length; loadMore.classList.toggle('hidden', remaining <= 0); loadMore.textContent = remaining > 0 ? `عرض المزيد (${remaining})` : '' }
+}
+function showProductImage(imageUrl: string, productName: string, returnFocus?: HTMLElement) {
+  const backdrop = document.createElement('div')
+  backdrop.className = 'image-viewer-backdrop'
+  backdrop.innerHTML = `<section class="image-viewer" role="dialog" aria-modal="true" aria-label="صورة ${escapeHtml(productName)}"><button class="image-viewer-close" type="button" aria-label="إغلاق">${svg('close')}</button><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(productName)}"><p class="image-viewer-error" hidden>تعذر تحميل الصورة.</p></section>`
+  const close = () => {
+    backdrop.remove()
+    document.removeEventListener('keydown', handleKeydown)
+    if (returnFocus?.isConnected) returnFocus.focus()
+  }
+  const handleKeydown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+  backdrop.addEventListener('click', close)
+  backdrop.querySelector('.image-viewer-close')!.addEventListener('click', (event) => { event.stopPropagation(); close() })
+  const image = backdrop.querySelector<HTMLImageElement>('.image-viewer img')!
+  image.addEventListener('click', (event) => event.stopPropagation())
+  image.addEventListener('error', () => {
+    image.hidden = true
+    backdrop.querySelector<HTMLElement>('.image-viewer-error')!.hidden = false
+  }, { once: true })
+  document.addEventListener('keydown', handleKeydown)
+  document.body.append(backdrop)
+  backdrop.querySelector<HTMLButtonElement>('.image-viewer-close')!.focus()
 }
 async function toggleFavorite(id: string) {
   if (!currentUser || !settings.favoritesEnabled) return
@@ -246,7 +297,7 @@ async function toggleFavorite(id: string) {
   updateCategoryBar()
   updateProductList()
   try {
-    await updateDoc(doc(db, 'users', currentUser.uid, 'products', id), { isFavorite })
+    await updateDoc(doc(db, 'users', dataUserId, 'products', id), { isFavorite })
   } catch (favoriteError) {
     product.isFavorite = !isFavorite
     updateCategoryBar()
@@ -407,9 +458,45 @@ function bindCategoryField(field: HTMLElement) {
     }, { passive: true });
   }
 }
-function productDocumentData(name: string, priceInput: string, number: number, categoryId: string | null) {
+function productDocumentData(name: string, priceInput: string, number: number, categoryId: string | null, imageUrl: string | null = null) {
   const price = priceInput ? Number(priceInput) : Number.NaN
-  return { name, price: Number.isFinite(price) ? price : null, number, categoryId }
+  return { name, price: Number.isFinite(price) ? price : null, number, categoryId, ...(imageUrl ? { imageUrl } : {}) }
+}
+function productImageField(imageUrl = '') {
+  return `<label>رابط صورة المنتج<input name="imageUrl" type="url" maxlength="2048" value="${escapeHtml(imageUrl)}" placeholder="https://..." autocomplete="url"></label><div class="product-image-preview" hidden><img alt="معاينة صورة المنتج"><p aria-live="polite"></p></div><p class="modal-error image-url-error" hidden></p>`
+}
+function bindProductImageField(container: ParentNode) {
+  const input = container.querySelector<HTMLInputElement>('input[name="imageUrl"]')!
+  const preview = container.querySelector<HTMLElement>('.product-image-preview')!
+  const image = preview.querySelector<HTMLImageElement>('img')!
+  const status = preview.querySelector<HTMLElement>('p')!
+  const error = container.querySelector<HTMLElement>('.image-url-error')!
+  const updatePreview = () => {
+    const value = input.value.trim()
+    const imageUrl = normalizeProductImageUrl(value)
+    error.hidden = true
+    error.textContent = ''
+    if (!value) {
+      preview.hidden = true
+      image.removeAttribute('src')
+      return
+    }
+    if (!imageUrl) {
+      preview.hidden = true
+      image.removeAttribute('src')
+      error.textContent = 'أدخل رابط صورة صحيحًا يبدأ بـ http:// أو https://.'
+      error.hidden = false
+      return
+    }
+    preview.hidden = false
+    image.hidden = false
+    status.textContent = 'جارٍ تحميل المعاينة...'
+    image.onload = () => { status.textContent = '' }
+    image.onerror = () => { image.hidden = true; status.textContent = 'تعذر تحميل الصورة من هذا الرابط.' }
+    image.src = imageUrl
+  }
+  input.addEventListener('input', updatePreview)
+  updatePreview()
 }
 function isProductNameTaken(name: string) {
   const normalizedName = normalizeName(name)
@@ -447,7 +534,8 @@ function renderAddModal() {
   renderMode('single')
 }
 function renderSingleProductForm(content: HTMLElement, element: HTMLElement) {
-  content.innerHTML = `<h2>إضافة منتج واحد</h2><form id="product-form"><label>اسم المنتج<input name="name" required autofocus maxlength="100" placeholder="مثال: دولاب داخلي صيني"></label><label>السعر بالدولار<input name="price" type="number" min="0.01" step="0.01" placeholder="0.00"></label><label>الفئة${renderCategoryField()}</label><p class="modal-error" id="modal-error"></p><button class="primary-button" type="submit">حفظ المنتج</button></form>`
+  content.innerHTML = `<h2>إضافة منتج واحد</h2><form id="product-form"><label>اسم المنتج<input name="name" required autofocus maxlength="100" placeholder="مثال: دولاب داخلي صيني"></label><label>السعر بالدولار<input name="price" type="number" min="0.01" step="0.01" placeholder="0.00"></label>${productImageField()}<label>الفئة${renderCategoryField()}</label><p class="modal-error" id="modal-error"></p><button class="primary-button" type="submit">حفظ المنتج</button></form>`
+  bindProductImageField(content)
   const field = content.querySelector<HTMLElement>('[data-category-select]')
   if (field) bindCategoryField(field)
   content.querySelector('form')!.addEventListener('submit', async (event) => {
@@ -455,8 +543,14 @@ function renderSingleProductForm(content: HTMLElement, element: HTMLElement) {
     const form = new FormData(event.currentTarget as HTMLFormElement)
     const name = String(form.get('name')).trim()
     const priceInput = String(form.get('price') || '').trim()
+    const imageUrlInput = String(form.get('imageUrl') || '').trim()
+    const imageUrl = normalizeProductImageUrl(imageUrlInput)
     const categoryId = String(form.get('categoryId') || '') || null
     const error = content.querySelector('#modal-error')!
+    if (imageUrlInput && !imageUrl) {
+      error.textContent = 'أدخل رابط صورة صحيحًا يبدأ بـ http:// أو https://.'
+      return
+    }
     if (!name || !isValidProductPrice(priceInput) || !currentUser) {
       error.textContent = priceInput ? 'أدخل سعرًا صالحًا.' : 'أدخل اسمًا صالحًا.'
       return
@@ -468,7 +562,7 @@ function renderSingleProductForm(content: HTMLElement, element: HTMLElement) {
     const button = content.querySelector<HTMLButtonElement>('button[type="submit"]')!
     button.disabled = true
     try {
-      await addDoc(collection(db, 'users', currentUser.uid, 'products'), productDocumentData(name, priceInput, nextProductNumber(), categoryId))
+      await addDoc(collection(db, 'users', dataUserId, 'products'), productDocumentData(name, priceInput, nextProductNumber(), categoryId, imageUrl))
       updateProductList()
       element.remove()
     } catch (addError) {
@@ -580,7 +674,7 @@ function renderBulkProductForm(content: HTMLElement, element: HTMLElement) {
       const name = row.querySelector<HTMLInputElement>('.bulk-product-name')!.value.trim()
       const priceInput = row.querySelector<HTMLInputElement>('.bulk-product-price')!.value.trim()
       const categoryId = row.querySelector<HTMLInputElement>('input[name="categoryId"]')!.value || null
-      batch.set(doc(collection(db, 'users', currentUser!.uid, 'products')), productDocumentData(name, priceInput, productNumber, categoryId))
+      batch.set(doc(collection(db, 'users', dataUserId, 'products')), productDocumentData(name, priceInput, productNumber, categoryId))
       productNumber += 1
     })
     try {
@@ -594,10 +688,51 @@ function renderBulkProductForm(content: HTMLElement, element: HTMLElement) {
     }
   })
 }
-function renderEditModal(id: string) { const product = products.find((item) => item.id === id); if (!product || !currentUser) return; const element = modal(`<button class="modal-close" aria-label="إغلاق">${svg('close')}</button><p class="eyebrow">تعديل المنتج</p><h2>${escapeHtml(product.name)}</h2><form id="edit-form"><label>اسم المنتج<input name="name" required maxlength="100" value="${escapeHtml(product.name)}"></label><label>السعر بالدولار<input name="price" type="number" min="0.01" step="0.01" value="${Number.isFinite(product.price) ? product.price : ''}"></label><label>الفئة${renderCategoryField(product.categoryId)}</label><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="danger-button" id="delete-product" type="button">حذف المنتج</button><button class="primary-button" type="submit">حفظ التعديل</button></div></form>`);
-  const field = element.querySelector<HTMLElement>('[data-category-select]'); if (field) bindCategoryField(field); element.querySelector('.modal-close')!.addEventListener('click', () => element.remove()); element.querySelector('#delete-product')!.addEventListener('click', () => { element.remove(); renderDeleteModal(id) }); element.querySelector('form')!.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget as HTMLFormElement); const name = String(form.get('name')).trim(); const priceInput = String(form.get('price') || '').trim(); const price = priceInput ? Number(priceInput) : Number.NaN; const categoryId = String(form.get('categoryId') || '') || null; const error = element.querySelector('#modal-error')!; if (!name || (priceInput && (!Number.isFinite(price) || price <= 0))) { error.textContent = priceInput ? 'أدخل سعرًا صالحًا.' : 'أدخل اسمًا صالحًا.'; return } const button = element.querySelector<HTMLButtonElement>('button[type="submit"]')!; button.disabled = true; try { await updateDoc(doc(db, 'users', currentUser!.uid, 'products', id), { name, price: Number.isFinite(price) ? price : null, categoryId }); element.remove() } catch (updateError) { button.disabled = false; error.textContent = friendlyError(updateError) } }) }
+function renderEditModal(id: string) {
+  const product = products.find((item) => item.id === id)
+  if (!product || !currentUser) return
+  const element = modal(`<button class="modal-close" aria-label="إغلاق">${svg('close')}</button><p class="eyebrow">تعديل المنتج</p><h2>${escapeHtml(product.name)}</h2><form id="edit-form"><label>اسم المنتج<input name="name" required maxlength="100" value="${escapeHtml(product.name)}"></label><label>السعر بالدولار<input name="price" type="number" min="0.01" step="0.01" value="${Number.isFinite(product.price) ? product.price : ''}"></label>${productImageField(product.imageUrl || '')}<label>الفئة${renderCategoryField(product.categoryId)}</label><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="danger-button" id="delete-product" type="button">حذف المنتج</button><button class="primary-button" type="submit">حفظ التعديل</button></div></form>`)
+  bindProductImageField(element)
+  const field = element.querySelector<HTMLElement>('[data-category-select]')
+  if (field) bindCategoryField(field)
+  element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
+  element.querySelector('#delete-product')!.addEventListener('click', () => { element.remove(); renderDeleteModal(id) })
+  element.querySelector<HTMLFormElement>('form')!.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget as HTMLFormElement)
+    const name = String(form.get('name')).trim()
+    const priceInput = String(form.get('price') || '').trim()
+    const price = priceInput ? Number(priceInput) : Number.NaN
+    const imageUrlInput = String(form.get('imageUrl') || '').trim()
+    const imageUrl = normalizeProductImageUrl(imageUrlInput)
+    const categoryId = String(form.get('categoryId') || '') || null
+    const error = element.querySelector('#modal-error')!
+    if (imageUrlInput && !imageUrl) {
+      error.textContent = 'أدخل رابط صورة صحيحًا يبدأ بـ http:// أو https://.'
+      return
+    }
+    if (!name || (priceInput && (!Number.isFinite(price) || price <= 0))) {
+      error.textContent = priceInput ? 'أدخل سعرًا صالحًا.' : 'أدخل اسمًا صالحًا.'
+      return
+    }
+    const button = element.querySelector<HTMLButtonElement>('button[type="submit"]')!
+    button.disabled = true
+    try {
+      await updateDoc(doc(db, 'users', dataUserId, 'products', id), {
+        name,
+        price: Number.isFinite(price) ? price : null,
+        categoryId,
+        imageUrl: imageUrl || deleteField(),
+      })
+      element.remove()
+    } catch (updateError) {
+      button.disabled = false
+      error.textContent = friendlyError(updateError)
+    }
+  })
+}
 function nextProductNumber() { const numbers = products.filter((product) => product.storedNumber).map((product) => product.number); return (numbers.length ? Math.max(...numbers) : 0) + 1 }
-function renderDeleteModal(id: string) { const product = products.find((item) => item.id === id); if (!product || !currentUser) return; const element = modal(`<p class="eyebrow">تأكيد الحذف</p><h2>حذف ${escapeHtml(product.name)}؟</h2><p class="modal-copy">سيتم إزالة هذا المنتج من قائمتك.</p><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="secondary-button" id="cancel-delete">إلغاء</button><button class="danger-button" id="confirm-delete">حذف المنتج</button></div>`); element.querySelector('#cancel-delete')!.addEventListener('click', () => element.remove()); element.querySelector('#confirm-delete')!.addEventListener('click', async () => { const button = element.querySelector<HTMLButtonElement>('#confirm-delete')!; button.disabled = true; try { await deleteDoc(doc(db, 'users', currentUser!.uid, 'products', id)); products = products.filter((item) => item.id !== id); updateProductList(); element.remove() } catch (deleteError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(deleteError) } }) }
+function renderDeleteModal(id: string) { const product = products.find((item) => item.id === id); if (!product || !currentUser) return; const element = modal(`<p class="eyebrow">تأكيد الحذف</p><h2>حذف ${escapeHtml(product.name)}؟</h2><p class="modal-copy">سيتم إزالة هذا المنتج من قائمتك.</p><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="secondary-button" id="cancel-delete">إلغاء</button><button class="danger-button" id="confirm-delete">حذف المنتج</button></div>`); element.querySelector('#cancel-delete')!.addEventListener('click', () => element.remove()); element.querySelector('#confirm-delete')!.addEventListener('click', async () => { const button = element.querySelector<HTMLButtonElement>('#confirm-delete')!; button.disabled = true; try { await deleteDoc(doc(db, 'users', dataUserId, 'products', id)); products = products.filter((item) => item.id !== id); updateProductList(); element.remove() } catch (deleteError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(deleteError) } }) }
 function renderSettingsNew() {
   if (!currentUser) return
   const element = modal(`
@@ -652,8 +787,8 @@ function renderSettingsNew() {
           retailProfitPercentage: retailToggle.checked ? normalizeRetailProfit(retailProfitPercentage) : settings.retailProfitPercentage,
         }
         settings = next
-        saveCachedSettings(currentUser.uid, settings)
-        try { await setDoc(doc(db, 'users', currentUser.uid), next, { merge: true }) } catch { /* Keep local settings. */ }
+        saveCachedSettings(dataUserId, settings)
+        try { await setDoc(doc(db, 'users', dataUserId), next, { merge: true }) } catch { /* Keep local settings. */ }
         updateProductList()
         element.remove()
       })
@@ -677,14 +812,14 @@ function renderSettingsNew() {
     darkModeToggle.addEventListener('change', async () => {
       settings = { ...settings, darkMode: darkModeToggle.checked }
       applyTheme(settings.darkMode)
-      saveCachedSettings(currentUser!.uid, settings)
-      try { await setDoc(doc(db, 'users', currentUser!.uid), settings, { merge: true }) } catch { /* Keep local state. */ }
+      saveCachedSettings(dataUserId, settings)
+      try { await setDoc(doc(db, 'users', dataUserId), settings, { merge: true }) } catch { /* Keep local state. */ }
     })
     favoritesToggle.addEventListener('change', async () => {
       settings = { ...settings, favoritesEnabled: favoritesToggle.checked }
       if (!settings.favoritesEnabled) favoritesFilterActive = false
-      saveCachedSettings(currentUser!.uid, settings)
-      try { await setDoc(doc(db, 'users', currentUser!.uid), settings, { merge: true }) } catch { /* Keep local state. */ }
+      saveCachedSettings(dataUserId, settings)
+      try { await setDoc(doc(db, 'users', dataUserId), settings, { merge: true }) } catch { /* Keep local state. */ }
       updateCategoryBar()
       updateProductList()
     })
@@ -722,14 +857,14 @@ function renderCategoriesTab(content: HTMLElement) {
     const button = content.querySelector<HTMLButtonElement>('button[type="submit"]')!;
     button.disabled = true;
     try {
-      const duplicate = await getDocs(query(collection(db, 'users', currentUser.uid, 'categories'), where('name', '==', name)));
+      const duplicate = await getDocs(query(collection(db, 'users', dataUserId, 'categories'), where('name', '==', name)));
       if (!duplicate.empty) {
         error.textContent = 'هذه الفئة موجودة بالفعل.';
         showToast('هذه الفئة موجودة بالفعل.');
         button.disabled = false;
         return;
       }
-      await addDoc(collection(db, 'users', currentUser.uid, 'categories'), { name });
+      await addDoc(collection(db, 'users', dataUserId, 'categories'), { name });
       renderCategoriesTab(content);
     } catch (categoryError) {
       button.disabled = false;
@@ -746,12 +881,12 @@ function renderCategoriesTab(content: HTMLElement) {
   }));
 }
 function categoryProductCount(categoryId: string) { return products.filter((product) => product.categoryId === categoryId).length }
-function renderCategoryManagement(id: string) { const category = categories.find((item) => item.id === id); if (!category || !currentUser) return; const element = modal(`<button class="modal-close" aria-label="إغلاق">${svg('close')}</button><p class="eyebrow">إدارة الفئة</p><h2>${escapeHtml(category.name)}</h2><form id="rename-category"><label>اسم الفئة<input name="name" maxlength="50" required value="${escapeHtml(category.name)}"></label><p class="modal-error" id="modal-error"></p><button class="primary-button" type="submit">حفظ الاسم</button></form><button class="danger-button category-delete" id="delete-category">حذف الفئة</button>`); element.querySelector('.modal-close')!.addEventListener('click', () => element.remove()); element.querySelector<HTMLFormElement>('#rename-category')!.addEventListener('submit', async (event) => { event.preventDefault(); const name = String(new FormData(event.currentTarget as HTMLFormElement).get('name')).trim(); const error = element.querySelector('#modal-error')!; if (!name) { error.textContent = 'أدخل اسم الفئة.'; return } const normalizedName = name.toLocaleLowerCase('ar'); if (categories.some((item) => item.id !== id && item.name.toLocaleLowerCase('ar') === normalizedName)) { error.textContent = 'هذه الفئة موجودة بالفعل.'; return } const button = element.querySelector<HTMLButtonElement>('button[type="submit"]')!; button.disabled = true; try { const duplicate = await getDocs(query(collection(db, 'users', currentUser!.uid, 'categories'), where('name', '==', name))); if (duplicate.docs.some((item) => item.id !== id)) { error.textContent = 'هذه الفئة موجودة بالفعل.'; button.disabled = false; return } await updateDoc(doc(db, 'users', currentUser!.uid, 'categories', id), { name }); const localCategory = categories.find((item) => item.id === id); if (localCategory) localCategory.name = name; categories.sort((a, b) => a.name.localeCompare(b.name, 'ar')); document.querySelectorAll<HTMLButtonElement>(`.category-name[data-manage="${id}"]`).forEach((nameButton) => { nameButton.innerHTML = `${escapeHtml(name)} <span>${categoryProductCount(id)} منتج</span>` }); updateCategoryBar(); updateProductList(); element.remove() } catch (renameError) { button.disabled = false; error.textContent = friendlyError(renameError) } }); element.querySelector('#delete-category')!.addEventListener('click', () => renderCategoryDeleteConfirmation(id, element)) }
-function renderCategoryDeleteConfirmation(id: string, parent: HTMLElement) { const category = categories.find((item) => item.id === id); if (!category || !currentUser) return; const element = modal(`<p class="eyebrow">تأكيد الحذف</p><h2>حذف فئة ${escapeHtml(category.name)}؟</h2><p class="modal-copy">ستصبح المنتجات التابعة لها بدون فئة، ولن يتم حذف المنتجات.</p><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="secondary-button" id="cancel-category-delete">إلغاء</button><button class="danger-button" id="confirm-category-delete">حذف الفئة</button></div>`); element.querySelector('#cancel-category-delete')!.addEventListener('click', () => element.remove()); element.querySelector('#confirm-category-delete')!.addEventListener('click', async () => { const button = element.querySelector<HTMLButtonElement>('#confirm-category-delete')!; button.disabled = true; try { const affected = products.filter((product) => product.categoryId === id); if (!affected.length) await deleteDoc(doc(db, 'users', currentUser!.uid, 'categories', id)); for (let index = 0; index < affected.length; index += 499) { const batch = writeBatch(db); affected.slice(index, index + 499).forEach((product) => batch.update(doc(db, 'users', currentUser!.uid, 'products', product.id), { categoryId: null })); if (index + 499 >= affected.length) batch.delete(doc(db, 'users', currentUser!.uid, 'categories', id)); await batch.commit() } categories = categories.filter((item) => item.id !== id); if (selectedCategoryId === id) selectedCategoryId = 'all'; document.querySelector<HTMLElement>(`.category-row[data-manage="${id}"]`)?.remove(); element.remove(); parent.remove(); updateCategoryBar(); updateProductList() } catch (deleteError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(deleteError) } }) }
-function renderBulkModal(categoryId: string) { if (!currentUser) return; const available = () => products.filter((product) => !product.categoryId); const element = modal(`<button class="modal-close" aria-label="إغلاق">${svg('close')}</button><p class="eyebrow">إضافة منتجات</p><h2>${escapeHtml(categories.find((category) => category.id === categoryId)?.name || '')}</h2><input id="bulk-search" type="search" placeholder="ابحث عن منتج..."><div id="bulk-list" class="bulk-list"></div><p class="modal-error" id="modal-error"></p><button class="primary-button" id="save-bulk">إضافة المحدد</button>`); const list = element.querySelector<HTMLElement>('#bulk-list')!; const renderList = () => { const term = element.querySelector<HTMLInputElement>('#bulk-search')!.value.trim().toLocaleLowerCase('ar'); list.innerHTML = available().filter((product) => product.name.toLocaleLowerCase('ar').includes(term)).map((product) => `<label class="bulk-item"><input type="checkbox" value="${product.id}"><span>${escapeHtml(product.name)}</span></label>`).join('') || '<p class="empty-copy">لا توجد منتجات غير مصنفة.</p>' }; element.querySelector('.modal-close')!.addEventListener('click', () => element.remove()); element.querySelector('#bulk-search')!.addEventListener('input', renderList); element.querySelector('#save-bulk')!.addEventListener('click', async () => { const ids = [...element.querySelectorAll<HTMLInputElement>('#bulk-list input:checked')].map((input) => input.value); if (!ids.length) { element.querySelector('#modal-error')!.textContent = 'اختر منتجًا واحدًا على الأقل.'; return } const batch = writeBatch(db); ids.filter((id) => available().some((product) => product.id === id)).forEach((id) => batch.update(doc(db, 'users', currentUser!.uid, 'products', id), { categoryId })); const button = element.querySelector<HTMLButtonElement>('#save-bulk')!; button.disabled = true; try { await batch.commit(); element.remove() } catch (bulkError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(bulkError) } }); renderList() }
+function renderCategoryManagement(id: string) { const category = categories.find((item) => item.id === id); if (!category || !currentUser) return; const element = modal(`<button class="modal-close" aria-label="إغلاق">${svg('close')}</button><p class="eyebrow">إدارة الفئة</p><h2>${escapeHtml(category.name)}</h2><form id="rename-category"><label>اسم الفئة<input name="name" maxlength="50" required value="${escapeHtml(category.name)}"></label><p class="modal-error" id="modal-error"></p><button class="primary-button" type="submit">حفظ الاسم</button></form><button class="danger-button category-delete" id="delete-category">حذف الفئة</button>`); element.querySelector('.modal-close')!.addEventListener('click', () => element.remove()); element.querySelector<HTMLFormElement>('#rename-category')!.addEventListener('submit', async (event) => { event.preventDefault(); const name = String(new FormData(event.currentTarget as HTMLFormElement).get('name')).trim(); const error = element.querySelector('#modal-error')!; if (!name) { error.textContent = 'أدخل اسم الفئة.'; return } const normalizedName = name.toLocaleLowerCase('ar'); if (categories.some((item) => item.id !== id && item.name.toLocaleLowerCase('ar') === normalizedName)) { error.textContent = 'هذه الفئة موجودة بالفعل.'; return } const button = element.querySelector<HTMLButtonElement>('button[type="submit"]')!; button.disabled = true; try { const duplicate = await getDocs(query(collection(db, 'users', dataUserId, 'categories'), where('name', '==', name))); if (duplicate.docs.some((item) => item.id !== id)) { error.textContent = 'هذه الفئة موجودة بالفعل.'; button.disabled = false; return } await updateDoc(doc(db, 'users', dataUserId, 'categories', id), { name }); const localCategory = categories.find((item) => item.id === id); if (localCategory) localCategory.name = name; categories.sort((a, b) => a.name.localeCompare(b.name, 'ar')); document.querySelectorAll<HTMLButtonElement>(`.category-name[data-manage="${id}"]`).forEach((nameButton) => { nameButton.innerHTML = `${escapeHtml(name)} <span>${categoryProductCount(id)} منتج</span>` }); updateCategoryBar(); updateProductList(); element.remove() } catch (renameError) { button.disabled = false; error.textContent = friendlyError(renameError) } }); element.querySelector('#delete-category')!.addEventListener('click', () => renderCategoryDeleteConfirmation(id, element)) }
+function renderCategoryDeleteConfirmation(id: string, parent: HTMLElement) { const category = categories.find((item) => item.id === id); if (!category || !currentUser) return; const element = modal(`<p class="eyebrow">تأكيد الحذف</p><h2>حذف فئة ${escapeHtml(category.name)}؟</h2><p class="modal-copy">ستصبح المنتجات التابعة لها بدون فئة، ولن يتم حذف المنتجات.</p><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="secondary-button" id="cancel-category-delete">إلغاء</button><button class="danger-button" id="confirm-category-delete">حذف الفئة</button></div>`); element.querySelector('#cancel-category-delete')!.addEventListener('click', () => element.remove()); element.querySelector('#confirm-category-delete')!.addEventListener('click', async () => { const button = element.querySelector<HTMLButtonElement>('#confirm-category-delete')!; button.disabled = true; try { const affected = products.filter((product) => product.categoryId === id); if (!affected.length) await deleteDoc(doc(db, 'users', dataUserId, 'categories', id)); for (let index = 0; index < affected.length; index += 499) { const batch = writeBatch(db); affected.slice(index, index + 499).forEach((product) => batch.update(doc(db, 'users', dataUserId, 'products', product.id), { categoryId: null })); if (index + 499 >= affected.length) batch.delete(doc(db, 'users', dataUserId, 'categories', id)); await batch.commit() } categories = categories.filter((item) => item.id !== id); if (selectedCategoryId === id) selectedCategoryId = 'all'; document.querySelector<HTMLElement>(`.category-row[data-manage="${id}"]`)?.remove(); element.remove(); parent.remove(); updateCategoryBar(); updateProductList() } catch (deleteError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(deleteError) } }) }
+function renderBulkModal(categoryId: string) { if (!currentUser) return; const available = () => products.filter((product) => !product.categoryId); const element = modal(`<button class="modal-close" aria-label="إغلاق">${svg('close')}</button><p class="eyebrow">إضافة منتجات</p><h2>${escapeHtml(categories.find((category) => category.id === categoryId)?.name || '')}</h2><input id="bulk-search" type="search" placeholder="ابحث عن منتج..."><div id="bulk-list" class="bulk-list"></div><p class="modal-error" id="modal-error"></p><button class="primary-button" id="save-bulk">إضافة المحدد</button>`); const list = element.querySelector<HTMLElement>('#bulk-list')!; const renderList = () => { const term = element.querySelector<HTMLInputElement>('#bulk-search')!.value.trim().toLocaleLowerCase('ar'); list.innerHTML = available().filter((product) => product.name.toLocaleLowerCase('ar').includes(term)).map((product) => `<label class="bulk-item"><input type="checkbox" value="${product.id}"><span>${escapeHtml(product.name)}</span></label>`).join('') || '<p class="empty-copy">لا توجد منتجات غير مصنفة.</p>' }; element.querySelector('.modal-close')!.addEventListener('click', () => element.remove()); element.querySelector('#bulk-search')!.addEventListener('input', renderList); element.querySelector('#save-bulk')!.addEventListener('click', async () => { const ids = [...element.querySelectorAll<HTMLInputElement>('#bulk-list input:checked')].map((input) => input.value); if (!ids.length) { element.querySelector('#modal-error')!.textContent = 'اختر منتجًا واحدًا على الأقل.'; return } const batch = writeBatch(db); ids.filter((id) => available().some((product) => product.id === id)).forEach((id) => batch.update(doc(db, 'users', dataUserId, 'products', id), { categoryId })); const button = element.querySelector<HTMLButtonElement>('#save-bulk')!; button.disabled = true; try { await batch.commit(); element.remove() } catch (bulkError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(bulkError) } }); renderList() }
 
-async function loadSettings(uid: string) { settings = loadCachedSettings(uid); try { const snapshot = await getDoc(doc(db, 'users', uid)); settings = snapshot.exists() ? safeSettings(snapshot.data()) : defaultSettings; saveCachedSettings(uid, settings) } catch { /* Keep the per-user cache without blocking the products view. */ } }
-async function startAuth() { applyStoredTheme(); renderInstallButton(); renderBootstrap(); try { await setPersistence(auth, browserLocalPersistence) } catch { /* Firebase will still report the current auth state. */ } onAuthStateChanged(auth, async (user) => { currentUser = user; unsubscribeProducts(); unsubscribeCategories(); products = []; categories = []; selectedCategoryId = 'all'; favoritesFilterActive = false; if (!user) { settings = defaultSettings; applyTheme(false); renderAuth(); return } await loadSettings(user.uid); if (currentUser?.uid !== user.uid) return; renderProductsShell(); const productsQuery = query(collection(db, 'users', user.uid, 'products')); unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => { products = snapshot.docs.map((item) => parseProduct(item.id, item.data())).filter((item): item is Product => item !== null).sort(arabicSort); updateProductList() }, (error) => renderProductsError(error)); const categoriesQuery = query(collection(db, 'users', user.uid, 'categories')); unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => { categories = snapshot.docs.map((item) => parseCategory(item.id, item.data())).filter((item): item is Category => item !== null).sort((a, b) => a.name.localeCompare(b.name, 'ar')); updateCategoryBar(); updateProductList() }) }) }
+async function loadSettings(ownerId: string) { settings = loadCachedSettings(ownerId); try { const snapshot = await getDoc(doc(db, 'users', ownerId)); settings = snapshot.exists() ? safeSettings(snapshot.data()) : defaultSettings; saveCachedSettings(ownerId, settings) } catch { /* Keep the per-user cache without blocking the products view. */ } }
+async function startAuth() { applyStoredTheme(); renderInstallButton(); renderBootstrap(); try { await setPersistence(auth, browserLocalPersistence) } catch { /* Firebase will still report the current auth state. */ } onAuthStateChanged(auth, async (user) => { currentUser = user; dataUserId = user ? resolveDataUserId(user) : ''; unsubscribeProducts(); unsubscribeCategories(); products = []; categories = []; selectedCategoryId = 'all'; favoritesFilterActive = false; if (!user) { settings = defaultSettings; applyTheme(false); renderAuth(); return } await loadSettings(dataUserId); if (currentUser?.uid !== user.uid) return; renderProductsShell(); const productsQuery = query(collection(db, 'users', dataUserId, 'products')); unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => { products = snapshot.docs.map((item) => parseProduct(item.id, item.data())).filter((item): item is Product => item !== null).sort(arabicSort); updateProductList() }, (error) => renderProductsError(error)); const categoriesQuery = query(collection(db, 'users', dataUserId, 'categories')); unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => { categories = snapshot.docs.map((item) => parseCategory(item.id, item.data())).filter((item): item is Category => item !== null).sort((a, b) => a.name.localeCompare(b.name, 'ar')); updateCategoryBar(); updateProductList() }) }) }
 async function installPwa() { if (!deferredInstall || isStandalone()) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; updateInstallButton() }
 window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); deferredInstall = event as BeforeInstallPromptEvent; updateInstallButton() })
 window.addEventListener('appinstalled', () => { deferredInstall = null; updateInstallButton() })
