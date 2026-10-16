@@ -85,6 +85,32 @@ function normalizeProductImageUrl(value: unknown): string | null {
     return null
   }
 }
+function optimizedProductImageUrl(value: string): string {
+  try {
+    const url = new URL(value)
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.hostname !== 'res.cloudinary.com') return value
+    const uploadPath = url.pathname.match(/^\/[^/]+\/image\/upload\//)
+    if (!uploadPath) return value
+
+    const pathAfterUpload = url.pathname.slice(uploadPath[0].length)
+    const transformParameters: string[] = []
+    for (const segment of pathAfterUpload.split('/')) {
+      if (!segment || /^v\d+$/i.test(segment)) break
+      const parameters = segment.split(',')
+      if (!parameters.every((parameter) => /^[a-z][a-z0-9]{0,2}_[^,]+$/i.test(parameter))) break
+      transformParameters.push(...parameters)
+    }
+    const existingParameters = new Set(transformParameters.map((parameter) => parameter.split(':', 1)[0].toLowerCase()))
+    const additions = ['f_auto', 'q_auto'].filter((parameter) => !existingParameters.has(parameter))
+    if (!additions.length) return value
+
+    const insertionIndex = uploadPath[0].length
+    url.pathname = `${url.pathname.slice(0, insertionIndex)}${additions.join(',')}/${url.pathname.slice(insertionIndex)}`
+    return url.href
+  } catch {
+    return value
+  }
+}
 function normalizeName(value: string) { return value.trim().replace(/\s+/g, ' ').normalize('NFC').toLocaleLowerCase('ar') }
 const developerFooter = () => '<footer class="developer-footer"><span class="developer-mark">R</span><span>تم التطوير بواسطة إبراهيم المقداد</span><a href="tel:0937708649" dir="ltr">0937708649</a></footer>'
 function highlightProductName(value: string, search: string) {
@@ -227,7 +253,7 @@ function updateProductList() {
     return `
     <article class="product-card ${isExactSearchMatch ? 'is-exact-search-match' : ''}" data-edit="${product.id}" tabindex="0" role="button" aria-label="تعديل ${escapeHtml(product.name)}">
       <div class="product-top">
-        ${product.imageUrl ? `<button class="product-image-trigger" type="button" data-image-url="${escapeHtml(product.imageUrl)}" data-product-name="${escapeHtml(product.name)}" aria-label="تكبير صورة ${escapeHtml(product.name)}"><img src="${escapeHtml(product.imageUrl)}" alt="" loading="lazy"></button>` : ''}
+        ${product.imageUrl ? `<button class="product-image-trigger" type="button" data-image-url="${escapeHtml(product.imageUrl)}" data-product-name="${escapeHtml(product.name)}" aria-label="تكبير صورة ${escapeHtml(product.name)}"><img src="${escapeHtml(optimizedProductImageUrl(product.imageUrl))}" alt="" loading="lazy"></button>` : ''}
         <div class="product-info">
           <h2 class="product-name">${highlightProductName(product.name, search)}</h2>
           <span class="product-category">${escapeHtml(categories.find((category) => category.id === product.categoryId)?.name || 'بدون فئة')}</span>
@@ -269,7 +295,7 @@ function updateProductList() {
 function showProductImage(imageUrl: string, productName: string, returnFocus?: HTMLElement) {
   const backdrop = document.createElement('div')
   backdrop.className = 'image-viewer-backdrop'
-  backdrop.innerHTML = `<section class="image-viewer" role="dialog" aria-modal="true" aria-label="صورة ${escapeHtml(productName)}"><button class="image-viewer-close" type="button" aria-label="إغلاق">${svg('close')}</button><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(productName)}"><p class="image-viewer-error" hidden>تعذر تحميل الصورة.</p></section>`
+  backdrop.innerHTML = `<section class="image-viewer" role="dialog" aria-modal="true" aria-label="صورة ${escapeHtml(productName)}"><button class="image-viewer-close" type="button" aria-label="إغلاق">${svg('close')}</button><img src="${escapeHtml(optimizedProductImageUrl(imageUrl))}" alt="${escapeHtml(productName)}"><p class="image-viewer-error" hidden>تعذر تحميل الصورة.</p></section>`
   const close = () => {
     backdrop.remove()
     document.removeEventListener('keydown', handleKeydown)
@@ -493,7 +519,7 @@ function bindProductImageField(container: ParentNode) {
     status.textContent = 'جارٍ تحميل المعاينة...'
     image.onload = () => { status.textContent = '' }
     image.onerror = () => { image.hidden = true; status.textContent = 'تعذر تحميل الصورة من هذا الرابط.' }
-    image.src = imageUrl
+    image.src = optimizedProductImageUrl(imageUrl)
   }
   input.addEventListener('input', updatePreview)
   updatePreview()
