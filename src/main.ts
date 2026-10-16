@@ -1,7 +1,7 @@
 import './style.css'
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, createUserWithEmailAndPassword, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
-import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, getFirestore, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, getDocsFromServer, getFirestore, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 
 const firebaseConfig = { apiKey: 'AIzaSyAnaTxPXhxMI3A-U4IucbEDfQ8hOTbix_w', authDomain: 'msalma-1d983.firebaseapp.com', projectId: 'msalma-1d983', storageBucket: 'msalma-1d983.firebasestorage.app', messagingSenderId: '1029462661783', appId: '1:1029462661783:web:61a7c2fd8336326fab27d2' }
 const app = initializeApp(firebaseConfig)
@@ -830,11 +830,17 @@ function renderSettingsNew() {
       <label class="switch-row"><span>تفعيل المفضلة</span><input id="favorites-toggle" type="checkbox" ${settings.favoritesEnabled ? 'checked' : ''}><i></i></label>
       <div class="account">
         <span>${escapeHtml(currentUser?.email || '')}</span>
-        <button class="text-button" id="logout" type="button">تسجيل الخروج</button>
+        <div class="account-actions">
+          <button class="text-button" id="export-products" type="button">تنزيل بياناتك</button>
+          <button class="text-button" id="logout" type="button">تسجيل الخروج</button>
+        </div>
       </div>
     `
     const darkModeToggle = content.querySelector<HTMLInputElement>('#dark-mode-toggle')!
     const favoritesToggle = content.querySelector<HTMLInputElement>('#favorites-toggle')!
+    content.querySelector<HTMLButtonElement>('#export-products')!.addEventListener('click', (event) => {
+      void exportProductsToExcel(event.currentTarget as HTMLButtonElement)
+    })
     darkModeToggle.addEventListener('change', async () => {
       settings = { ...settings, darkMode: darkModeToggle.checked }
       applyTheme(settings.darkMode)
@@ -862,6 +868,60 @@ function renderSettingsNew() {
     button.addEventListener('click', () => renderTab(button.dataset.settingsTab || 'currency'))
   })
   renderTab('currency')
+}
+async function exportProductsToExcel(button: HTMLButtonElement) {
+  if (!currentUser) {
+    showToast('يجب تسجيل الدخول أولًا.')
+    return
+  }
+  button.disabled = true
+  try {
+    const snapshot = await getDocsFromServer(query(collection(db, 'users', dataUserId, 'products')))
+    const exportProducts = snapshot.docs
+      .map((item) => parseProduct(item.id, item.data()))
+      .filter((product): product is Product => product !== null)
+      .sort(arabicSort)
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('المنتجات', {
+      views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
+    })
+    worksheet.columns = [
+      { header: 'اسم المنتج', key: 'name', width: 36 },
+      { header: 'السعر بالدولار (جملة)', key: 'price', width: 24 },
+    ]
+    worksheet.addRows(exportProducts.map((product) => ({
+      name: product.name,
+      price: Number.isFinite(product.price) ? product.price : null,
+    })))
+    worksheet.eachRow((row, rowNumber) => {
+      row.height = rowNumber === 1 ? 26 : 22
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = { horizontal: 'right', vertical: 'middle' }
+        cell.font = { name: 'Arial', size: rowNumber === 1 ? 12 : 11, bold: rowNumber === 1, color: { argb: rowNumber === 1 ? 'FFFFFFFF' : 'FF203044' } }
+        if (rowNumber === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
+      })
+    })
+    worksheet.getColumn('price').numFmt = '$#,##0.00'
+    worksheet.autoFilter = { from: 'A1', to: 'B1' }
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `بيانات-المنتجات-${new Date().toISOString().slice(0, 10)}.xlsx`
+    document.body.append(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    showToast('تم تنزيل بيانات المنتجات بنجاح.')
+  } catch (error) {
+    console.error('Failed to export products:', error)
+    showToast('تعذر تصدير بيانات المنتجات. حاول مجددًا.')
+  } finally {
+    button.disabled = false
+  }
 }
 function renderCategoriesTab(content: HTMLElement) {
   content.innerHTML = `<h2>الفئات</h2><form id="category-form" class="inline-form"><input name="name" maxlength="50" required placeholder="اسم الفئة"><button class="primary-button" type="submit">إنشاء فئة</button></form><p class="modal-error" id="category-error"></p><div class="category-list">${categories.length ? categories.map((category) => `<div class="category-row" data-manage="${category.id}"><button class="category-name" data-manage="${category.id}">${escapeHtml(category.name)} <span>${categoryProductCount(category.id)} ${categoryProductCount(category.id) === 1 ? 'منتج' : 'منتج'}</span></button><button class="secondary-button" data-bulk="${category.id}">إضافة منتجات</button></div>`).join('') : '<p class="empty-copy">لا توجد فئات بعد.</p>'}</div>`;
@@ -916,5 +976,14 @@ async function startAuth() { applyStoredTheme(); renderInstallButton(); renderBo
 async function installPwa() { if (!deferredInstall || isStandalone()) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; updateInstallButton() }
 window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); deferredInstall = event as BeforeInstallPromptEvent; updateInstallButton() })
 window.addEventListener('appinstalled', () => { deferredInstall = null; updateInstallButton() })
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }))
+if ('serviceWorker' in navigator) window.addEventListener('load', () => {
+  if (import.meta.env.DEV) {
+    void navigator.serviceWorker.getRegistration(new URL(import.meta.env.BASE_URL, window.location.href).href)
+      .then((registration) => registration?.unregister())
+      .catch((error) => console.error('Failed to disable the service worker during development:', error))
+    return
+  }
+  void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
+    .catch((error) => console.error('Failed to register the service worker:', error))
+})
 startAuth()

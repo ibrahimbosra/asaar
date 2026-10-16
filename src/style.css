@@ -510,8 +510,12 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .percentage-label-unit { color: var(--muted); font-weight: 700; }
 body.dark-mode .percentage-input-unit, body.dark-mode .percentage-label-unit { color: #aab8c5; }
 .account { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; margin-top: 23px; border-top: 1px solid var(--line); padding-top: 18px; color: var(--muted); direction: ltr; font-size: 12px; }
-.account > span { min-width: 0; overflow: hidden; direction: ltr; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.account > span { align-self: flex-end; min-width: 0; margin-bottom: 10px; overflow: hidden; direction: ltr; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .account .text-button { flex: 0 0 auto; min-height: 42px; padding: 0 14px; border: 1px solid rgba(231, 111, 81, .22); border-radius: 11px; background: #fff0ed; color: var(--coral); font-size: 12px; font-weight: 800; white-space: nowrap; }
+.account-actions { display: flex; flex-direction: column; gap: 8px; }
+.account-actions button { width: 100%; }
+.account-actions #export-products { border-color: var(--teal); background: var(--teal); color: #fff; box-shadow: 0 7px 14px #007d7925; }
+.account-actions #export-products:active { background: var(--teal-dark); }
 .settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -5px 0 20px; padding-bottom: 8px; }
 .settings-tabs button { flex: 1; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 8px 3px; font-size: 12px; font-weight: 800; }
 .settings-tabs button.active { border-color: var(--teal); color: var(--teal); }
