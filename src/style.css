@@ -97,6 +97,7 @@ label { display: grid; gap: 7px; color: var(--ink); font-size: 13px; }
 input { width: 100%; border: 1px solid var(--line); border-radius: 11px; outline: 0; background: #fff; color: var(--ink); padding: 13px 14px; font-size: 14px; transition: border-color .2s, box-shadow .2s; }
 input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px #007d7918; }
 input::placeholder { color: #aeb8c0; }
+#product-form input[name="imageUrl"], #edit-form input[name="imageUrl"] { direction: ltr; text-align: left; font-size: 12px; }
 .custom-select-field {
   position: relative;
   width: 100%;
