@@ -495,7 +495,7 @@ function showProductImageHelp(trigger: HTMLButtonElement) {
   if (document.querySelector('.image-help-backdrop')) return
   const isAndroidPwa = isStandalone() && /Android/i.test(navigator.userAgent)
   const cloudinaryUrl = isAndroidPwa
-    ? 'intent://cloudinary.com/#Intent;scheme=https;package=com.android.chrome;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=https%3A%2F%2Fcloudinary.com%2F;end'
+    ? 'intent://cloudinary.com/#Intent;scheme=https;package=com.android.chrome;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end'
     : 'https://cloudinary.com/'
   const cloudinaryTarget = isAndroidPwa ? '_self' : '_blank'
   const backdrop = document.createElement('div')
