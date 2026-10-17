@@ -1,7 +1,7 @@
 import './style.css'
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, createUserWithEmailAndPassword, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
-import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, getDocsFromServer, getFirestore, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, getFirestore, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 
 const firebaseConfig = { apiKey: 'AIzaSyAnaTxPXhxMI3A-U4IucbEDfQ8hOTbix_w', authDomain: 'msalma-1d983.firebaseapp.com', projectId: 'msalma-1d983', storageBucket: 'msalma-1d983.firebasestorage.app', messagingSenderId: '1029462661783', appId: '1:1029462661783:web:61a7c2fd8336326fab27d2' }
 const app = initializeApp(firebaseConfig)
@@ -19,12 +19,30 @@ type Settings = {
   retailPricesEnabled: boolean
   retailProfitPercentage: number
 }
+type CloudinarySettings = { cloudName: string; uploadPreset: string }
+type ActiveImageUpload = {
+  authUid: string
+  dataUserId: string
+  authSessionId: number
+  form: HTMLFormElement
+  fileInput: HTMLInputElement
+  uploadButton: HTMLButtonElement
+  status: HTMLElement
+  cancelled: boolean
+  abortRequest?: () => void
+  observer?: MutationObserver
+}
 type BeforeInstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
 const defaultSettings: Settings = { syriaEnabled: false, exchangeRate: 0, darkMode: false, favoritesEnabled: false, retailPricesEnabled: true, retailProfitPercentage: 0 }
+const emptyCloudinarySettings: CloudinarySettings = { cloudName: '', uploadPreset: '' }
+const maxProductImageSize = 10 * 1024 * 1024
+const allowedProductImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const sharedDataUserId = '8zgVSfgflNStj4rlBblTUKE7zi42'
 const sharedDataEmails = new Set(['mothanamsa@gmail.com', 'msalma@gmail.com'])
 let currentUser: User | null = null
 let dataUserId = ''
+let authSessionId = 0
+const activeImageUploads = new Set<ActiveImageUpload>()
 let products: Product[] = []
 let categories: Category[] = []
 const productPageSize = 50
@@ -299,6 +317,7 @@ function showProductImage(imageUrl: string, productName: string, returnFocus?: H
   const close = () => {
     backdrop.remove()
     document.removeEventListener('keydown', handleKeydown)
+    window.removeEventListener('asaar:session-invalidated', close)
     if (returnFocus?.isConnected) returnFocus.focus()
   }
   const handleKeydown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
@@ -310,6 +329,7 @@ function showProductImage(imageUrl: string, productName: string, returnFocus?: H
     image.hidden = true
     backdrop.querySelector<HTMLElement>('.image-viewer-error')!.hidden = false
   }, { once: true })
+  window.addEventListener('asaar:session-invalidated', close, { once: true })
   document.addEventListener('keydown', handleKeydown)
   document.body.append(backdrop)
   backdrop.querySelector<HTMLButtonElement>('.image-viewer-close')!.focus()
@@ -354,6 +374,37 @@ function updateInstallButton() {
 }
 function updateNavigation() { const nav = document.querySelector<HTMLElement>('#quick-nav'); const top = document.querySelector<HTMLButtonElement>('#scroll-top'); const bottom = document.querySelector<HTMLButtonElement>('#scroll-bottom'); if (!nav || !top || !bottom) return; const atTop = window.scrollY < 80; const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80; top.classList.toggle('hidden', atTop); bottom.classList.toggle('hidden', atBottom); nav.classList.toggle('has-actions', !atTop || !atBottom) }
 function handleScroll() { updateNavigation(); const nav = document.querySelector<HTMLElement>('#quick-nav'); if (!nav) return; nav.classList.add('visible'); if (quickNavTimer) clearTimeout(quickNavTimer); quickNavTimer = setTimeout(() => nav.classList.remove('visible'), 3000) }
+
+function isUploadSessionCurrent(upload: ActiveImageUpload) {
+  return !upload.cancelled
+    && currentUser?.uid === upload.authUid
+    && dataUserId === upload.dataUserId
+    && authSessionId === upload.authSessionId
+    && upload.form.isConnected
+}
+function cancelImageUpload(upload: ActiveImageUpload) {
+  if (upload.cancelled) return
+  const canUpdateUi = isUploadSessionCurrent(upload)
+  upload.cancelled = true
+  upload.observer?.disconnect()
+  upload.abortRequest?.()
+  activeImageUploads.delete(upload)
+  upload.fileInput.value = ''
+  if (canUpdateUi) {
+    upload.uploadButton.disabled = false
+    upload.status.textContent = ''
+  }
+}
+function cancelSessionImageUploads() {
+  for (const upload of activeImageUploads) cancelImageUpload(upload)
+}
+function closeSessionInterfaces() {
+  cancelSessionImageUploads()
+  window.dispatchEvent(new Event('asaar:session-invalidated'))
+  document.querySelectorAll<HTMLElement>('.modal-backdrop, .image-help-backdrop, .image-viewer-backdrop, #app-toast').forEach((element) => element.remove())
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = undefined
+}
 
 const modal = (content: string) => {
   const isCategoryFlow = content.includes('id="rename-category"') || content.includes('id="confirm-category-delete"')
@@ -489,7 +540,111 @@ function productDocumentData(name: string, priceInput: string, number: number, c
   return { name, price: Number.isFinite(price) ? price : null, number, categoryId, ...(imageUrl ? { imageUrl } : {}) }
 }
 function productImageField(imageUrl = '') {
-  return `<div class="product-image-field"><div class="image-url-field-header"><label for="product-image-url">رابط صورة المنتج</label><button class="image-help-trigger" type="button" aria-label="مساعدة حول رابط صورة المنتج" title="كيف أرفع صورة وأحصل على رابطها؟">!</button></div><input id="product-image-url" name="imageUrl" type="url" maxlength="2048" value="${escapeHtml(imageUrl)}" placeholder="https://..." autocomplete="url"></div><div class="product-image-preview" hidden><img alt="معاينة صورة المنتج"><p aria-live="polite"></p></div><p class="modal-error image-url-error" hidden></p>`
+  return `<div class="product-image-field"><div class="image-url-field-header"><label for="product-image-url">رابط صورة المنتج</label><button class="image-help-trigger" type="button" aria-label="مساعدة حول رابط صورة المنتج" title="كيف أرفع صورة وأحصل على رابطها؟">!</button></div><input id="product-image-url" name="imageUrl" type="url" maxlength="2048" value="${escapeHtml(imageUrl)}" placeholder="https://..." autocomplete="url"><div class="product-image-upload"><button class="secondary-button product-image-upload-button" type="button">اختيار صورة ورفعها</button><input class="product-image-upload-input" type="file" accept="image/jpeg,image/png,image/webp" hidden><p class="product-image-upload-status" role="status" aria-live="polite"></p></div></div><div class="product-image-preview" hidden><img alt="معاينة صورة المنتج"><p aria-live="polite"></p></div><p class="modal-error image-url-error" hidden></p>`
+}
+function userCloudinarySettingsRef(user: User, ownerId: string) {
+  return doc(db, 'users', ownerId, 'cloudinarySettings', user.uid)
+}
+async function readUserCloudinarySettings(user: User, ownerId: string): Promise<CloudinarySettings> {
+  const snapshot = await getDocFromServer(userCloudinarySettingsRef(user, ownerId))
+  if (!snapshot.exists()) return { ...emptyCloudinarySettings }
+  const data = snapshot.data()
+  return {
+    cloudName: typeof data.cloudName === 'string' ? data.cloudName.trim() : '',
+    uploadPreset: typeof data.uploadPreset === 'string' ? data.uploadPreset.trim() : '',
+  }
+}
+function validCloudinarySettings(value: CloudinarySettings) {
+  return /^[a-z0-9][a-z0-9-]*$/i.test(value.cloudName) && /^[a-z0-9_-]+$/i.test(value.uploadPreset)
+}
+function uploadProductImage(file: File, config: CloudinarySettings, onProgress: (percent: number) => void): { promise: Promise<string>; abort: () => void } {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('upload_preset', config.uploadPreset)
+  const request = new XMLHttpRequest()
+  request.open('POST', `https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloudName)}/image/upload`)
+  request.timeout = 120000
+  let settled = false
+  let rejectPromise: (error: Error) => void = () => undefined
+  const cleanup = () => {
+    request.upload.removeEventListener('progress', handleProgress)
+    request.removeEventListener('load', handleLoad)
+    request.removeEventListener('error', handleError)
+    request.removeEventListener('abort', handleAbort)
+    request.removeEventListener('timeout', handleTimeout)
+  }
+  const fail = (error: Error) => {
+    if (settled) return
+    settled = true
+    cleanup()
+    rejectPromise(error)
+  }
+  const handleProgress = (event: ProgressEvent) => {
+    if (!settled && event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100))
+  }
+  const handleLoad = () => {
+    if (settled) return
+    let response: { secure_url?: unknown; error?: { message?: unknown } }
+    try {
+      response = JSON.parse(request.responseText) as typeof response
+    } catch (error) {
+      fail(new Error('استجابة Cloudinary غير صالحة.', { cause: error }))
+      return
+    }
+    if (request.status < 200 || request.status >= 300) {
+      fail(new Error(typeof response.error?.message === 'string' ? response.error.message : 'رفض Cloudinary عملية رفع الصورة.'))
+      return
+    }
+    if (typeof response.secure_url !== 'string') {
+      fail(new Error('لم يُرجع Cloudinary رابطًا آمنًا للصورة.'))
+      return
+    }
+    try {
+      const secureUrl = new URL(response.secure_url)
+      if (secureUrl.protocol !== 'https:') throw new Error('Cloudinary returned a non-HTTPS URL')
+      settled = true
+      cleanup()
+      resolvePromise(secureUrl.href)
+    } catch (error) {
+      fail(new Error('رابط الصورة الناتج من Cloudinary غير صالح.', { cause: error }))
+    }
+  }
+  const handleError = () => fail(new Error('تعذر الاتصال بخدمة Cloudinary.'))
+  const handleAbort = () => fail(new Error('تم إلغاء رفع الصورة.'))
+  const handleTimeout = () => fail(new Error('انتهت مهلة رفع الصورة. تحقق من الاتصال وحاول مجددًا.'))
+  let resolvePromise: (url: string) => void = () => undefined
+  const promise = new Promise<string>((resolve, reject) => {
+    resolvePromise = resolve
+    rejectPromise = reject
+  })
+  request.upload.addEventListener('progress', handleProgress)
+  request.addEventListener('load', handleLoad)
+  request.addEventListener('error', handleError)
+  request.addEventListener('abort', handleAbort)
+  request.addEventListener('timeout', handleTimeout)
+  try {
+    request.send(formData)
+  } catch (error) {
+    fail(new Error('تعذر بدء رفع الصورة.', { cause: error }))
+  }
+  return {
+    promise,
+    abort: () => {
+      if (settled) return
+      try {
+        request.abort()
+      } finally {
+        fail(new Error('تم إلغاء رفع الصورة.'))
+      }
+    },
+  }
+}
+function uploadErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  if (message) console.error('Product image upload failed:', error)
+  if (/^[\u0600-\u06FF]/.test(message)) return message
+  if (message.includes('permission-denied') || message.includes('unauthenticated')) return 'تعذر قراءة إعدادات الرفع لهذا المستخدم.'
+  return 'تعذر رفع الصورة إلى Cloudinary. تحقق من الإعدادات وقيود Upload Preset والاتصال، ثم حاول مجددًا.'
 }
 function showProductImageHelp(trigger: HTMLButtonElement) {
   if (document.querySelector('.image-help-backdrop')) return
@@ -517,17 +672,22 @@ function showProductImageHelp(trigger: HTMLButtonElement) {
   const close = () => {
     backdrop.remove()
     document.removeEventListener('keydown', handleKeydown)
+    window.removeEventListener('asaar:session-invalidated', close)
     if (trigger.isConnected) trigger.focus()
   }
   const handleKeydown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
   backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close() })
   backdrop.querySelector<HTMLButtonElement>('.image-help-close')!.addEventListener('click', close)
+  window.addEventListener('asaar:session-invalidated', close, { once: true })
   document.addEventListener('keydown', handleKeydown)
   document.body.append(backdrop)
   backdrop.querySelector<HTMLButtonElement>('.image-help-close')!.focus()
 }
 function bindProductImageField(container: ParentNode) {
   const input = container.querySelector<HTMLInputElement>('input[name="imageUrl"]')!
+  const fileInput = container.querySelector<HTMLInputElement>('.product-image-upload-input')!
+  const uploadButton = container.querySelector<HTMLButtonElement>('.product-image-upload-button')!
+  const uploadStatus = container.querySelector<HTMLElement>('.product-image-upload-status')!
   const preview = container.querySelector<HTMLElement>('.product-image-preview')!
   const image = preview.querySelector<HTMLImageElement>('img')!
   const status = preview.querySelector<HTMLElement>('p')!
@@ -561,6 +721,70 @@ function bindProductImageField(container: ParentNode) {
     image.src = optimizedProductImageUrl(imageUrl)
   }
   input.addEventListener('input', updatePreview)
+  uploadButton.addEventListener('click', () => fileInput.click())
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0]
+    if (!file) return
+    if (!allowedProductImageTypes.has(file.type)) {
+      uploadStatus.textContent = 'الصيغ المسموحة هي JPEG وPNG وWebP فقط.'
+      fileInput.value = ''
+      return
+    }
+    if (file.size > maxProductImageSize) {
+      uploadStatus.textContent = 'يجب ألا يتجاوز حجم الصورة 10 MiB.'
+      fileInput.value = ''
+      return
+    }
+    if (!currentUser) {
+      uploadStatus.textContent = 'يجب تسجيل الدخول قبل رفع الصورة.'
+      fileInput.value = ''
+      return
+    }
+    const user = currentUser
+    const upload: ActiveImageUpload = {
+      authUid: user.uid,
+      dataUserId,
+      authSessionId,
+      form: input.form!,
+      fileInput,
+      uploadButton,
+      status: uploadStatus,
+      cancelled: false,
+    }
+    activeImageUploads.add(upload)
+    upload.observer = new MutationObserver(() => {
+      if (!upload.form.isConnected) cancelImageUpload(upload)
+    })
+    upload.observer.observe(document.body, { childList: true, subtree: true })
+    uploadButton.disabled = true
+    uploadStatus.textContent = 'جارٍ تحميل إعدادات Cloudinary...'
+    try {
+      const config = await readUserCloudinarySettings(user, upload.dataUserId)
+      if (!isUploadSessionCurrent(upload)) return
+      if (!validCloudinarySettings(config)) throw new Error('أدخل Cloud name وUpload Preset واحفظهما في إعدادات رفع الصور أولًا.')
+      uploadStatus.textContent = 'جارٍ رفع الصورة...'
+      const request = uploadProductImage(file, config, (percent) => {
+        if (isUploadSessionCurrent(upload)) uploadStatus.textContent = `جارٍ رفع الصورة... ${percent}%`
+      })
+      upload.abortRequest = request.abort
+      if (!isUploadSessionCurrent(upload)) {
+        request.abort()
+        return
+      }
+      const secureUrl = await request.promise
+      if (!isUploadSessionCurrent(upload)) return
+      input.value = secureUrl
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      uploadStatus.textContent = 'تم رفع الصورة وإضافتها إلى المعاينة. احفظ المنتج لإتمام التغيير.'
+    } catch (error) {
+      if (isUploadSessionCurrent(upload)) uploadStatus.textContent = uploadErrorMessage(error)
+    } finally {
+      upload.observer?.disconnect()
+      activeImageUploads.delete(upload)
+      fileInput.value = ''
+      if (isUploadSessionCurrent(upload)) uploadButton.disabled = false
+    }
+  })
   updatePreview()
 }
 function isProductNameTaken(name: string) {
@@ -867,6 +1091,13 @@ function renderSettingsNew() {
       <h2>النظام</h2>
       <label class="switch-row"><span>الوضع الليلي</span><input id="dark-mode-toggle" type="checkbox" ${settings.darkMode ? 'checked' : ''}><i></i></label>
       <label class="switch-row"><span>تفعيل المفضلة</span><input id="favorites-toggle" type="checkbox" ${settings.favoritesEnabled ? 'checked' : ''}><i></i></label>
+      <section class="cloudinary-settings">
+        <h3>إعدادات رفع الصور</h3>
+        <label>Cloud name<input id="cloudinary-cloud-name" type="text" dir="ltr" autocomplete="off" spellcheck="false"></label>
+        <label>Upload Preset<input id="cloudinary-upload-preset" type="text" dir="ltr" autocomplete="off" spellcheck="false"></label>
+        <p id="cloudinary-settings-status" role="status" aria-live="polite">جارٍ تحميل الإعدادات...</p>
+        <button class="primary-button" id="save-cloudinary-settings" type="button" disabled>حفظ إعدادات الرفع</button>
+      </section>
       <div class="account">
         <span>${escapeHtml(currentUser?.email || '')}</span>
         <div class="account-actions">
@@ -877,6 +1108,7 @@ function renderSettingsNew() {
     `
     const darkModeToggle = content.querySelector<HTMLInputElement>('#dark-mode-toggle')!
     const favoritesToggle = content.querySelector<HTMLInputElement>('#favorites-toggle')!
+    bindCloudinarySettingsPanel(content)
     content.querySelector<HTMLButtonElement>('#export-products')!.addEventListener('click', (event) => {
       void exportProductsToExcel(event.currentTarget as HTMLButtonElement)
     })
@@ -907,6 +1139,61 @@ function renderSettingsNew() {
     button.addEventListener('click', () => renderTab(button.dataset.settingsTab || 'currency'))
   })
   renderTab('currency')
+}
+function bindCloudinarySettingsPanel(content: HTMLElement) {
+  const user = currentUser
+  const ownerId = dataUserId
+  const sessionId = authSessionId
+  const cloudNameInput = content.querySelector<HTMLInputElement>('#cloudinary-cloud-name')!
+  const uploadPresetInput = content.querySelector<HTMLInputElement>('#cloudinary-upload-preset')!
+  const status = content.querySelector<HTMLElement>('#cloudinary-settings-status')!
+  const saveButton = content.querySelector<HTMLButtonElement>('#save-cloudinary-settings')!
+  const isCurrentPanel = () => content.isConnected && cloudNameInput.isConnected && currentUser?.uid === user?.uid && dataUserId === ownerId && authSessionId === sessionId
+  const load = async () => {
+    if (!user) {
+      status.textContent = 'يجب تسجيل الدخول أولًا.'
+      return
+    }
+    try {
+      const config = await readUserCloudinarySettings(user, ownerId)
+      if (!isCurrentPanel()) return
+      cloudNameInput.value = config.cloudName
+      uploadPresetInput.value = config.uploadPreset
+      status.textContent = validCloudinarySettings(config) ? 'الإعدادات المحفوظة جاهزة للاستخدام.' : 'أدخل Cloud name وUpload Preset ثم احفظهما لتفعيل الرفع.'
+      saveButton.disabled = false
+    } catch (error) {
+      console.error('Failed to load Cloudinary settings:', error)
+      if (!isCurrentPanel()) return
+      status.textContent = 'تعذر تحميل الإعدادات من قاعدة البيانات. تحقق من الاتصال والصلاحيات.'
+    }
+  }
+  saveButton.addEventListener('click', async () => {
+    if (!user || !isCurrentPanel()) {
+      status.textContent = 'يجب تسجيل الدخول قبل حفظ الإعدادات.'
+      return
+    }
+    const config = {
+      cloudName: cloudNameInput.value.trim(),
+      uploadPreset: uploadPresetInput.value.trim(),
+    }
+    if (!validCloudinarySettings(config)) {
+      status.textContent = 'أدخل Cloud name وUpload Preset صالحين.'
+      return
+    }
+    saveButton.disabled = true
+    status.textContent = 'جارٍ حفظ إعدادات الرفع...'
+    try {
+      await setDoc(userCloudinarySettingsRef(user, ownerId), config, { merge: true })
+      if (!isCurrentPanel()) return
+      status.textContent = 'تم حفظ إعدادات الرفع لهذا المستخدم.'
+    } catch (error) {
+      console.error('Failed to save Cloudinary settings:', error)
+      if (isCurrentPanel()) status.textContent = 'تعذر حفظ الإعدادات. تحقق من الاتصال وصلاحيات قاعدة البيانات.'
+    } finally {
+      if (isCurrentPanel()) saveButton.disabled = false
+    }
+  })
+  void load()
 }
 async function exportProductsToExcel(button: HTMLButtonElement) {
   if (!currentUser) {
@@ -1010,8 +1297,70 @@ function renderCategoryManagement(id: string) { const category = categories.find
 function renderCategoryDeleteConfirmation(id: string, parent: HTMLElement) { const category = categories.find((item) => item.id === id); if (!category || !currentUser) return; const element = modal(`<p class="eyebrow">تأكيد الحذف</p><h2>حذف فئة ${escapeHtml(category.name)}؟</h2><p class="modal-copy">ستصبح المنتجات التابعة لها بدون فئة، ولن يتم حذف المنتجات.</p><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="secondary-button" id="cancel-category-delete">إلغاء</button><button class="danger-button" id="confirm-category-delete">حذف الفئة</button></div>`); element.querySelector('#cancel-category-delete')!.addEventListener('click', () => element.remove()); element.querySelector('#confirm-category-delete')!.addEventListener('click', async () => { const button = element.querySelector<HTMLButtonElement>('#confirm-category-delete')!; button.disabled = true; try { const affected = products.filter((product) => product.categoryId === id); if (!affected.length) await deleteDoc(doc(db, 'users', dataUserId, 'categories', id)); for (let index = 0; index < affected.length; index += 499) { const batch = writeBatch(db); affected.slice(index, index + 499).forEach((product) => batch.update(doc(db, 'users', dataUserId, 'products', product.id), { categoryId: null })); if (index + 499 >= affected.length) batch.delete(doc(db, 'users', dataUserId, 'categories', id)); await batch.commit() } categories = categories.filter((item) => item.id !== id); if (selectedCategoryId === id) selectedCategoryId = 'all'; document.querySelector<HTMLElement>(`.category-row[data-manage="${id}"]`)?.remove(); element.remove(); parent.remove(); updateCategoryBar(); updateProductList() } catch (deleteError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(deleteError) } }) }
 function renderBulkModal(categoryId: string) { if (!currentUser) return; const available = () => products.filter((product) => !product.categoryId); const element = modal(`<button class="modal-close" aria-label="إغلاق">${svg('close')}</button><p class="eyebrow">إضافة منتجات</p><h2>${escapeHtml(categories.find((category) => category.id === categoryId)?.name || '')}</h2><input id="bulk-search" type="search" placeholder="ابحث عن منتج..."><div id="bulk-list" class="bulk-list"></div><p class="modal-error" id="modal-error"></p><button class="primary-button" id="save-bulk">إضافة المحدد</button>`); const list = element.querySelector<HTMLElement>('#bulk-list')!; const renderList = () => { const term = element.querySelector<HTMLInputElement>('#bulk-search')!.value.trim().toLocaleLowerCase('ar'); list.innerHTML = available().filter((product) => product.name.toLocaleLowerCase('ar').includes(term)).map((product) => `<label class="bulk-item"><input type="checkbox" value="${product.id}"><span>${escapeHtml(product.name)}</span></label>`).join('') || '<p class="empty-copy">لا توجد منتجات غير مصنفة.</p>' }; element.querySelector('.modal-close')!.addEventListener('click', () => element.remove()); element.querySelector('#bulk-search')!.addEventListener('input', renderList); element.querySelector('#save-bulk')!.addEventListener('click', async () => { const ids = [...element.querySelectorAll<HTMLInputElement>('#bulk-list input:checked')].map((input) => input.value); if (!ids.length) { element.querySelector('#modal-error')!.textContent = 'اختر منتجًا واحدًا على الأقل.'; return } const batch = writeBatch(db); ids.filter((id) => available().some((product) => product.id === id)).forEach((id) => batch.update(doc(db, 'users', dataUserId, 'products', id), { categoryId })); const button = element.querySelector<HTMLButtonElement>('#save-bulk')!; button.disabled = true; try { await batch.commit(); element.remove() } catch (bulkError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(bulkError) } }); renderList() }
 
-async function loadSettings(ownerId: string) { settings = loadCachedSettings(ownerId); try { const snapshot = await getDoc(doc(db, 'users', ownerId)); settings = snapshot.exists() ? safeSettings(snapshot.data()) : defaultSettings; saveCachedSettings(ownerId, settings) } catch { /* Keep the per-user cache without blocking the products view. */ } }
-async function startAuth() { applyStoredTheme(); renderInstallButton(); renderBootstrap(); try { await setPersistence(auth, browserLocalPersistence) } catch { /* Firebase will still report the current auth state. */ } onAuthStateChanged(auth, async (user) => { currentUser = user; dataUserId = user ? resolveDataUserId(user) : ''; unsubscribeProducts(); unsubscribeCategories(); products = []; categories = []; selectedCategoryId = 'all'; favoritesFilterActive = false; if (!user) { settings = defaultSettings; applyTheme(false); renderAuth(); return } await loadSettings(dataUserId); if (currentUser?.uid !== user.uid) return; renderProductsShell(); const productsQuery = query(collection(db, 'users', dataUserId, 'products')); unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => { products = snapshot.docs.map((item) => parseProduct(item.id, item.data())).filter((item): item is Product => item !== null).sort(arabicSort); updateProductList() }, (error) => renderProductsError(error)); const categoriesQuery = query(collection(db, 'users', dataUserId, 'categories')); unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => { categories = snapshot.docs.map((item) => parseCategory(item.id, item.data())).filter((item): item is Category => item !== null).sort((a, b) => a.name.localeCompare(b.name, 'ar')); updateCategoryBar(); updateProductList() }) }) }
+function isAuthSessionCurrent(user: User, ownerId: string, sessionId: number) {
+  return currentUser?.uid === user.uid && dataUserId === ownerId && authSessionId === sessionId
+}
+async function loadSettings(user: User, ownerId: string, sessionId: number) {
+  if (isAuthSessionCurrent(user, ownerId, sessionId)) settings = loadCachedSettings(ownerId)
+  try {
+    const snapshot = await getDoc(doc(db, 'users', ownerId))
+    const loadedSettings = snapshot.exists() ? safeSettings(snapshot.data()) : defaultSettings
+    saveCachedSettings(ownerId, loadedSettings)
+    if (isAuthSessionCurrent(user, ownerId, sessionId)) settings = loadedSettings
+  } catch {
+    /* Keep the per-user cache without blocking the products view. */
+  }
+}
+async function startAuth() {
+  applyStoredTheme()
+  renderInstallButton()
+  renderBootstrap()
+  try {
+    await setPersistence(auth, browserLocalPersistence)
+  } catch {
+    /* Firebase will still report the current auth state. */
+  }
+  onAuthStateChanged(auth, async (user) => {
+    const nextDataUserId = user ? resolveDataUserId(user) : ''
+    if (currentUser?.uid !== user?.uid || dataUserId !== nextDataUserId) {
+      authSessionId += 1
+      closeSessionInterfaces()
+    }
+    currentUser = user
+    dataUserId = nextDataUserId
+    const sessionId = authSessionId
+    unsubscribeProducts()
+    unsubscribeCategories()
+    unsubscribeProducts = () => undefined
+    unsubscribeCategories = () => undefined
+    products = []
+    categories = []
+    selectedCategoryId = 'all'
+    favoritesFilterActive = false
+    if (!user) {
+      settings = defaultSettings
+      applyTheme(false)
+      renderAuth()
+      return
+    }
+
+    await loadSettings(user, nextDataUserId, sessionId)
+    if (!isAuthSessionCurrent(user, nextDataUserId, sessionId)) return
+
+    renderProductsShell()
+    const productsQuery = query(collection(db, 'users', nextDataUserId, 'products'))
+    unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
+      products = snapshot.docs.map((item) => parseProduct(item.id, item.data())).filter((item): item is Product => item !== null).sort(arabicSort)
+      updateProductList()
+    }, (error) => renderProductsError(error))
+    const categoriesQuery = query(collection(db, 'users', nextDataUserId, 'categories'))
+    unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => {
+      categories = snapshot.docs.map((item) => parseCategory(item.id, item.data())).filter((item): item is Category => item !== null).sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+      updateCategoryBar()
+      updateProductList()
+    })
+  })
+}
 async function installPwa() { if (!deferredInstall || isStandalone()) return; deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; updateInstallButton() }
 window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault(); deferredInstall = event as BeforeInstallPromptEvent; updateInstallButton() })
 window.addEventListener('appinstalled', () => { deferredInstall = null; updateInstallButton() })

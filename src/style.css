@@ -104,6 +104,15 @@ input::placeholder { color: #aeb8c0; }
 .image-help-trigger { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 20px; border: 1px solid rgba(0, 125, 121, .35); border-radius: 50%; background: rgba(0, 125, 121, .08); color: var(--teal); font-size: 13px; font-weight: 800; line-height: 1; }
 .image-help-trigger:hover { background: rgba(0, 125, 121, .16); }
 .image-help-trigger:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.product-image-upload { display: grid; gap: 6px; }
+.product-image-upload-button { width: 100%; min-height: 42px; border: 1px solid #b5d9d4; background: #edf8f6; color: var(--teal); }
+.product-image-upload-button:hover { background: #e1f2ef; }
+.product-image-upload-status { min-width: 0; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.cloudinary-settings { display: grid; gap: 12px; margin: 20px 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, .55); }
+.cloudinary-settings h3 { margin: 0; color: var(--ink); font-size: 16px; }
+.cloudinary-settings input { text-align: left; }
+.cloudinary-settings p { min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.cloudinary-settings .primary-button { min-height: 44px; }
 .custom-select-field {
   position: relative;
   width: 100%;
@@ -664,6 +673,9 @@ body.dark-mode .image-help-dialog h2, body.dark-mode .image-help-steps strong, b
 body.dark-mode .image-help-steps li { border-color: #2b3b49; background: #111b24; }
 body.dark-mode .image-help-note { background: rgba(0, 125, 121, .16); }
 body.dark-mode .image-help-icon::after { border-color: #111b24; }
+body.dark-mode .cloudinary-settings { border-color: #2b3b49; background: #111b24; }
+body.dark-mode .cloudinary-settings h3 { color: #e6edf3; }
+body.dark-mode .cloudinary-settings p, body.dark-mode .product-image-upload-status { color: #aab8c5; }
 body.dark-mode .favorite-button { color: #71808b; }
 body.dark-mode .favorite-button:hover,
 body.dark-mode .favorite-button.is-favorite { color: #f0b83f; }
