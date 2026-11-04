@@ -20,6 +20,8 @@ type Settings = {
   retailProfitPercentage: number
 }
 type CloudinarySettings = { cloudName: string; uploadPreset: string }
+const compressedProductImageBrand: unique symbol = Symbol('compressed-product-image')
+type CompressedProductImage = { file: File; [compressedProductImageBrand]: true }
 type ActiveImageUpload = {
   authUid: string
   dataUserId: string
@@ -36,6 +38,8 @@ type BeforeInstallPromptEvent = Event & { prompt: () => Promise<void>; userChoic
 const defaultSettings: Settings = { syriaEnabled: false, exchangeRate: 0, darkMode: false, favoritesEnabled: false, retailPricesEnabled: true, retailProfitPercentage: 0 }
 const emptyCloudinarySettings: CloudinarySettings = { cloudName: '', uploadPreset: '' }
 const maxProductImageSize = 10 * 1024 * 1024
+const maxCompressedProductImageSize = 200 * 1024
+const maxProductImageDimension = 1000
 const allowedProductImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const sharedDataUserId = '8zgVSfgflNStj4rlBblTUKE7zi42'
 const sharedDataEmails = new Set(['mothanamsa@gmail.com', 'msalma@gmail.com'])
@@ -577,9 +581,109 @@ async function readUserCloudinarySettings(user: User, ownerId: string): Promise<
 function validCloudinarySettings(value: CloudinarySettings) {
   return /^[a-z0-9][a-z0-9-]*$/i.test(value.cloudName) && /^[a-z0-9_-]+$/i.test(value.uploadPreset)
 }
-function uploadProductImage(file: File, config: CloudinarySettings, onProgress: (percent: number) => void): { promise: Promise<string>; abort: () => void } {
+async function decodeProductImage(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() }
+  }
+  const objectUrl = URL.createObjectURL(file)
+  const image = new Image()
+  image.src = objectUrl
+  try {
+    await image.decode()
+  } catch (error) {
+    image.removeAttribute('src')
+    URL.revokeObjectURL(objectUrl)
+    throw error
+  }
+  return {
+    source: image,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    close: () => {
+      image.removeAttribute('src')
+      URL.revokeObjectURL(objectUrl)
+    },
+  }
+}
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('تعذر إنشاء نسخة JPEG من الصورة.'))
+    }, 'image/jpeg', quality)
+  })
+}
+async function compressProductImage(file: File, isCancelled: () => boolean): Promise<CompressedProductImage> {
+  let decoded: Awaited<ReturnType<typeof decodeProductImage>>
+  try {
+    decoded = await decodeProductImage(file)
+  } catch (error) {
+    throw new Error('تعذر فتح الصورة لضغطها. جرّب صورة أخرى بصيغة JPEG أو PNG أو WebP.', { cause: error })
+  }
+  if (!Number.isFinite(decoded.width) || !Number.isFinite(decoded.height) || decoded.width < 1 || decoded.height < 1) {
+    decoded.close()
+    throw new Error('تعذر تحديد أبعاد الصورة لضغطها.')
+  }
+  const scale = Math.min(1, maxProductImageDimension / decoded.width, maxProductImageDimension / decoded.height)
+  let width = Math.max(1, Math.round(decoded.width * scale))
+  let height = Math.max(1, Math.round(decoded.height * scale))
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d', { alpha: false })
+  if (!context) {
+    decoded.close()
+    throw new Error('تعذر تجهيز الصورة لضغطها على هذا الجهاز.')
+  }
+  let quality = 0.86
+  try {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (isCancelled()) throw new Error('تم إلغاء ضغط الصورة.')
+      canvas.width = width
+      canvas.height = height
+      context.fillStyle = '#fff'
+      context.fillRect(0, 0, width, height)
+      context.drawImage(decoded.source, 0, 0, width, height)
+      const blob = await canvasToJpegBlob(canvas, quality)
+      if (blob.size <= maxCompressedProductImageSize) {
+        const baseName = file.name.replace(/\.[^.]+$/, '') || 'product-image'
+        const compressedFile = new File([blob], `${baseName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
+        if (compressedFile.size <= maxCompressedProductImageSize) return { file: compressedFile, [compressedProductImageBrand]: true }
+        throw new Error('تعذر ضغط الصورة إلى 200 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
+      }
+      const sizeRatio = Math.sqrt(maxCompressedProductImageSize / blob.size)
+      const nextQuality = quality * Math.min(0.9, sizeRatio * 0.9)
+      if (nextQuality >= 0.12) {
+        quality = nextQuality
+      } else {
+        const resizeFactor = Math.max(0.5, Math.min(0.85, sizeRatio * 0.9))
+        const nextScale = Math.min(width / decoded.width, height / decoded.height) * resizeFactor
+        const nextWidth = Math.max(1, Math.round(decoded.width * nextScale))
+        const nextHeight = Math.max(1, Math.round(decoded.height * nextScale))
+        if (nextWidth === width && nextHeight === height) {
+          throw new Error('تعذر ضغط الصورة إلى 200 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
+        }
+        width = nextWidth
+        height = nextHeight
+        quality = 0.86
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    }
+    throw new Error('تعذر ضغط الصورة إلى 200 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
+  } catch (error) {
+    if (error instanceof Error && /^[\u0600-\u06FF]/.test(error.message)) throw error
+    throw new Error('حدث خطأ أثناء ضغط الصورة. جرّب صورة أخرى.', { cause: error })
+  } finally {
+    canvas.width = 0
+    canvas.height = 0
+    decoded.close()
+  }
+}
+function uploadProductImage(image: CompressedProductImage, config: CloudinarySettings, onProgress: (percent: number) => void): { promise: Promise<string>; abort: () => void } {
+  if (image[compressedProductImageBrand] !== true || image.file.type !== 'image/jpeg' || image.file.size > maxCompressedProductImageSize) {
+    throw new Error('تم إيقاف الرفع لأن الصورة المضغوطة يجب ألا تتجاوز 200 KB.')
+  }
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('file', image.file)
   formData.append('upload_preset', config.uploadPreset)
   const request = new XMLHttpRequest()
   request.open('POST', `https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloudName)}/image/upload`)
@@ -789,13 +893,16 @@ function bindProductImageField(container: ParentNode) {
     })
     upload.observer.observe(document.body, { childList: true, subtree: true })
     sourceButtons.forEach((button) => { button.disabled = true })
-    uploadStatus.textContent = 'جارٍ تحميل إعدادات Cloudinary...'
+    uploadStatus.textContent = 'جارٍ ضغط الصورة محليًا إلى 200 KB أو أقل...'
     try {
+      const compressedImage = await compressProductImage(file, () => !isUploadSessionCurrent(upload))
+      if (!isUploadSessionCurrent(upload)) return
+      uploadStatus.textContent = 'جارٍ تحميل إعدادات Cloudinary...'
       const config = await readUserCloudinarySettings(user, upload.dataUserId)
       if (!isUploadSessionCurrent(upload)) return
       if (!validCloudinarySettings(config)) throw new Error('أدخل Cloud name وUpload Preset واحفظهما في إعدادات رفع الصور أولًا.')
       uploadStatus.textContent = 'جارٍ رفع الصورة...'
-      const request = uploadProductImage(file, config, (percent) => {
+      const request = uploadProductImage(compressedImage, config, (percent) => {
         if (isUploadSessionCurrent(upload)) uploadStatus.textContent = `جارٍ رفع الصورة... ${percent}%`
       })
       upload.abortRequest = request.abort
