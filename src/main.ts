@@ -26,7 +26,7 @@ type ActiveImageUpload = {
   authSessionId: number
   form: HTMLFormElement
   fileInput: HTMLInputElement
-  uploadButton: HTMLButtonElement
+  uploadButtons: HTMLButtonElement[]
   status: HTMLElement
   cancelled: boolean
   abortRequest?: () => void
@@ -391,7 +391,7 @@ function cancelImageUpload(upload: ActiveImageUpload) {
   activeImageUploads.delete(upload)
   upload.fileInput.value = ''
   if (canUpdateUi) {
-    upload.uploadButton.disabled = false
+    upload.uploadButtons.forEach((button) => { button.disabled = false })
     upload.status.textContent = ''
   }
 }
@@ -544,18 +544,17 @@ function productImageField(imageUrl = '') {
     <div class="image-url-field-header"><label for="product-image-url">رابط صورة المنتج</label><button class="image-help-trigger" type="button" aria-label="مساعدة حول رابط صورة المنتج" title="كيف أرفع صورة وأحصل على رابطها؟">!</button></div>
     <input id="product-image-url" name="imageUrl" type="url" maxlength="2048" value="${escapeHtml(imageUrl)}" placeholder="https://..." autocomplete="url">
     <div class="product-image-upload">
-      <button class="secondary-button product-image-upload-button" type="button" aria-haspopup="dialog" aria-expanded="false">اختيار صورة ورفعها</button>
       <input class="product-image-camera-input" type="file" accept="image/*" capture="environment" hidden>
       <input class="product-image-gallery-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-      <div class="product-image-source-backdrop" hidden>
-        <section class="product-image-source-dialog" role="dialog" aria-modal="true" aria-labelledby="product-image-source-title">
-          <button class="product-image-source-close" type="button" aria-label="إغلاق">×</button>
-          <h2 id="product-image-source-title">اختيار مصدر الصورة</h2>
-          <div class="product-image-source-options">
-            <button class="secondary-button product-image-source-option" type="button" data-image-source="camera">التقاط صورة بالكاميرا</button>
-            <button class="secondary-button product-image-source-option" type="button" data-image-source="gallery">اختيار صورة من المعرض</button>
-          </div>
-        </section>
+      <div class="product-image-source-options">
+        <button class="product-image-source-option" type="button" data-image-source="camera">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H9l1.5 2h7A2.5 2.5 0 0 1 20 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.2"/></svg>
+          <span>الكاميرا</span>
+        </button>
+        <button class="product-image-source-option" type="button" data-image-source="gallery">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="9.5" r="1.5"/><path d="m5 17 4.5-4.5 3 3 2.5-2.5 4 4"/></svg>
+          <span>المعرض</span>
+        </button>
       </div>
       <p class="product-image-upload-status" role="status" aria-live="polite"></p>
     </div>
@@ -708,18 +707,13 @@ function bindProductImageField(container: ParentNode) {
   const input = container.querySelector<HTMLInputElement>('input[name="imageUrl"]')!
   const cameraInput = container.querySelector<HTMLInputElement>('.product-image-camera-input')!
   const galleryInput = container.querySelector<HTMLInputElement>('.product-image-gallery-input')!
-  const uploadButton = container.querySelector<HTMLButtonElement>('.product-image-upload-button')!
   const uploadStatus = container.querySelector<HTMLElement>('.product-image-upload-status')!
-  const sourcePicker = container.querySelector<HTMLElement>('.product-image-source-backdrop')!
+  const sourceOptions = container.querySelector<HTMLElement>('.product-image-source-options')!
+  const sourceButtons = [...sourceOptions.querySelectorAll<HTMLButtonElement>('[data-image-source]')]
   const preview = container.querySelector<HTMLElement>('.product-image-preview')!
   const image = preview.querySelector<HTMLImageElement>('img')!
   const status = preview.querySelector<HTMLElement>('p')!
   const error = container.querySelector<HTMLElement>('.image-url-error')!
-  const closeSourcePicker = (returnFocus = true) => {
-    sourcePicker.hidden = true
-    uploadButton.setAttribute('aria-expanded', 'false')
-    if (returnFocus && uploadButton.isConnected) uploadButton.focus()
-  }
   container.querySelector<HTMLButtonElement>('.image-help-trigger')!.addEventListener('click', (event) => {
     event.preventDefault()
     showProductImageHelp(event.currentTarget as HTMLButtonElement)
@@ -749,29 +743,12 @@ function bindProductImageField(container: ParentNode) {
     image.src = optimizedProductImageUrl(imageUrl)
   }
   input.addEventListener('input', updatePreview)
-  uploadButton.addEventListener('click', () => {
-    sourcePicker.hidden = false
-    uploadButton.setAttribute('aria-expanded', 'true')
-    sourcePicker.querySelector<HTMLButtonElement>('[data-image-source="camera"]')!.focus()
-  })
-  sourcePicker.addEventListener('click', (event) => {
-    if (event.target === sourcePicker) {
-      closeSourcePicker()
-      return
-    }
-    const target = event.target
-    if (!(target instanceof HTMLButtonElement)) return
-    if (target.classList.contains('product-image-source-close')) {
-      closeSourcePicker()
-      return
-    }
+  sourceOptions.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('[data-image-source]') : null
+    if (!target) return
     const selectedInput = target.dataset.imageSource === 'camera' ? cameraInput : target.dataset.imageSource === 'gallery' ? galleryInput : null
     if (!selectedInput) return
-    closeSourcePicker(false)
     selectedInput.click()
-  })
-  sourcePicker.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeSourcePicker()
   })
   const handleImageSelection = async (event: Event) => {
     const fileInput = event.currentTarget as HTMLInputElement
@@ -802,7 +779,7 @@ function bindProductImageField(container: ParentNode) {
       authSessionId,
       form: input.form!,
       fileInput,
-      uploadButton,
+      uploadButtons: sourceButtons,
       status: uploadStatus,
       cancelled: false,
     }
@@ -811,7 +788,7 @@ function bindProductImageField(container: ParentNode) {
       if (!upload.form.isConnected) cancelImageUpload(upload)
     })
     upload.observer.observe(document.body, { childList: true, subtree: true })
-    uploadButton.disabled = true
+    sourceButtons.forEach((button) => { button.disabled = true })
     uploadStatus.textContent = 'جارٍ تحميل إعدادات Cloudinary...'
     try {
       const config = await readUserCloudinarySettings(user, upload.dataUserId)
@@ -837,14 +814,13 @@ function bindProductImageField(container: ParentNode) {
       upload.observer?.disconnect()
       activeImageUploads.delete(upload)
       fileInput.value = ''
-      if (isUploadSessionCurrent(upload)) uploadButton.disabled = false
+      if (isUploadSessionCurrent(upload)) sourceButtons.forEach((button) => { button.disabled = false })
     }
   }
   for (const fileInput of [cameraInput, galleryInput]) {
     fileInput.addEventListener('change', handleImageSelection)
     fileInput.addEventListener('cancel', () => { fileInput.value = '' })
   }
-  sourcePicker.querySelector<HTMLButtonElement>('.product-image-source-close')!.addEventListener('click', () => closeSourcePicker())
   updatePreview()
 }
 function isProductNameTaken(name: string) {
