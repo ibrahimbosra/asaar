@@ -1,0 +1,14 @@
+{
+  "name": "الأسعار",
+  "short_name": "الأسعار",
+  "description": "قائمة أسعار المنتجات الشخصية",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f5f7f9",
+  "theme_color": "#007d79",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
