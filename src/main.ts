@@ -1810,7 +1810,7 @@ function renderInvoiceModal() {
     document.addEventListener('keydown', handleDialogKeydown)
     window.addEventListener('asaar:session-invalidated', closeDialog, { once: true })
     document.body.append(backdrop)
-    nameInput.focus()
+    backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-cancel')!.focus()
   }
   element.querySelectorAll<HTMLButtonElement>('[data-invoice-type]').forEach((button) => {
     button.addEventListener('click', () => {
