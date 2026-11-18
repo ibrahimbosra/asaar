@@ -10,6 +10,8 @@ const db = getFirestore(app)
 const appRoot = document.querySelector<HTMLDivElement>('#app')!
 
 type Product = { id: string; name: string; price: number; number: number; storedNumber: boolean; categoryId: string | null; isFavorite: boolean; imageUrl?: string }
+type InvoiceType = 'wholesale' | 'retail'
+type InvoicePriceOverride = { usd: number; syp: number | null }
 type Category = { id: string; name: string }
 type Settings = {
   syriaEnabled: boolean
@@ -22,6 +24,7 @@ type Settings = {
 type CloudinarySettings = { cloudName: string; uploadPreset: string }
 const compressedProductImageBrand: unique symbol = Symbol('compressed-product-image')
 type CompressedProductImage = { file: File; [compressedProductImageBrand]: true }
+type StagedProductImage = { sourceFile: File; rotation: number; compressed: CompressedProductImage | null; previewUrl: string }
 type ActiveImageUpload = {
   authUid: string
   dataUserId: string
@@ -38,7 +41,7 @@ type BeforeInstallPromptEvent = Event & { prompt: () => Promise<void>; userChoic
 const defaultSettings: Settings = { syriaEnabled: false, exchangeRate: 0, darkMode: false, favoritesEnabled: false, retailPricesEnabled: true, retailProfitPercentage: 0 }
 const emptyCloudinarySettings: CloudinarySettings = { cloudName: '', uploadPreset: '' }
 const maxProductImageSize = 10 * 1024 * 1024
-const maxCompressedProductImageSize = 200 * 1024
+const maxCompressedProductImageSize = 100 * 1024
 const maxProductImageDimension = 1000
 const allowedProductImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const sharedDataUserId = '8zgVSfgflNStj4rlBblTUKE7zi42'
@@ -47,6 +50,7 @@ let currentUser: User | null = null
 let dataUserId = ''
 let authSessionId = 0
 const activeImageUploads = new Set<ActiveImageUpload>()
+const stagedProductImages = new WeakMap<HTMLFormElement, StagedProductImage>()
 let products: Product[] = []
 let categories: Category[] = []
 const productPageSize = 50
@@ -231,10 +235,11 @@ function renderAuth(error = '', signUp = false) {
 
 function renderProductsShell() {
   applyTheme(settings.darkMode)
-  appRoot.innerHTML = `<main class="products-page"><header class="topbar"><div class="search-box">${svg('search')}<input id="search" type="search" placeholder="ابحث عن منتج..." autocomplete="off"></div><button class="icon-button topbar-install hidden" id="install-app-app" type="button" aria-label="تثبيت التطبيق" title="تثبيت التطبيق">${svg('download')}</button><button class="icon-button add-button" id="add-product" aria-label="إضافة منتج">${svg('plus')}</button><button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button></header><nav class="category-bar" id="category-bar" aria-label="الفئات"></nav><section class="products-list" id="products-list"></section><button class="load-more-products hidden" id="load-more-products" type="button"></button><div class="quick-nav" id="quick-nav"><button id="scroll-top" aria-label="إلى الأعلى">${svg('arrowUp')}</button><button id="scroll-bottom" aria-label="إلى الأسفل">${svg('arrowDown')}</button></div></main>`
+  appRoot.innerHTML = `<main class="products-page"><header class="topbar"><div class="search-box">${svg('search')}<input id="search" type="search" placeholder="ابحث عن منتج..." autocomplete="off"></div><button class="icon-button" id="add-product" aria-label="إضافة منتج">${svg('plus')}</button><button class="icon-button topbar-install hidden" id="install-app-app" type="button" aria-label="تثبيت التطبيق" title="تثبيت التطبيق">${svg('download')}</button><button class="icon-button invoice-button" id="open-invoice" type="button" aria-label="فتح حساب فاتورة" title="حساب فاتورة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></button><button class="icon-button" id="open-settings" aria-label="الإعدادات">${svg('settings')}</button></header><nav class="category-bar" id="category-bar" aria-label="الفئات"></nav><section class="products-list" id="products-list"></section><button class="load-more-products hidden" id="load-more-products" type="button"></button><div class="quick-nav" id="quick-nav"><button id="scroll-top" aria-label="إلى الأعلى">${svg('arrowUp')}</button><button id="scroll-bottom" aria-label="إلى الأسفل">${svg('arrowDown')}</button></div></main>`
   document.querySelector('.products-page')?.insertAdjacentHTML('beforeend', developerFooter())
   document.querySelector<HTMLInputElement>('#search')!.addEventListener('input', () => { productDisplayLimit = productPageSize; updateProductList() })
   document.querySelector('#add-product')!.addEventListener('click', renderAddModal)
+  document.querySelector('#open-invoice')!.addEventListener('click', renderInvoiceModal)
   document.querySelector('#open-settings')!.addEventListener('click', renderSettingsNew)
   document.querySelector('#install-app-app')!.addEventListener('click', installPwa)
   document.querySelector('#scroll-top')!.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }))
@@ -405,7 +410,7 @@ function cancelSessionImageUploads() {
 function closeSessionInterfaces() {
   cancelSessionImageUploads()
   window.dispatchEvent(new Event('asaar:session-invalidated'))
-  document.querySelectorAll<HTMLElement>('.modal-backdrop, .image-help-backdrop, .image-viewer-backdrop, #app-toast').forEach((element) => element.remove())
+  document.querySelectorAll<HTMLElement>('.modal-backdrop, .invoice-price-editor-backdrop, .image-help-backdrop, .image-viewer-backdrop, #app-toast').forEach((element) => element.remove())
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = undefined
 }
@@ -563,7 +568,20 @@ function productImageField(imageUrl = '') {
       <p class="product-image-upload-status" role="status" aria-live="polite"></p>
     </div>
   </div>
-  <div class="product-image-preview" hidden><img alt="معاينة صورة المنتج"><p aria-live="polite"></p></div>
+  <div class="product-image-preview" hidden>
+    <div class="product-image-preview-toolbar">
+      <div class="product-image-preview-frame">
+        <button class="product-image-delete-button" type="button" aria-label="حذف الصورة" title="حذف الصورة">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 11v6M15 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+        </button>
+        <img alt="معاينة صورة المنتج">
+      </div>
+      <button class="product-image-rotate-button" type="button" aria-label="تدوير الصورة 90 درجة" title="تدوير الصورة 90 درجة">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></svg>
+      </button>
+    </div>
+    <p aria-live="polite"></p>
+  </div>
   <p class="modal-error image-url-error" hidden></p>`
 }
 function userCloudinarySettingsRef(user: User, ownerId: string) {
@@ -581,10 +599,100 @@ async function readUserCloudinarySettings(user: User, ownerId: string): Promise<
 function validCloudinarySettings(value: CloudinarySettings) {
   return /^[a-z0-9][a-z0-9-]*$/i.test(value.cloudName) && /^[a-z0-9_-]+$/i.test(value.uploadPreset)
 }
-async function decodeProductImage(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
+async function readJpegOrientation(file: File): Promise<number> {
+  if (file.type !== 'image/jpeg') return 1
+  const bytes = new Uint8Array(await file.slice(0, 128 * 1024).arrayBuffer())
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return 1
+  let offset = 2
+  while (offset + 4 < bytes.length && bytes[offset] === 0xff) {
+    const marker = bytes[offset + 1]
+    const length = (bytes[offset + 2] << 8) | bytes[offset + 3]
+    if (length < 2) break
+    if (marker === 0xe1) {
+      const exifStart = offset + 4
+      if (
+        exifStart + 6 <= bytes.length
+        && bytes[exifStart] === 0x45
+        && bytes[exifStart + 1] === 0x78
+        && bytes[exifStart + 2] === 0x69
+        && bytes[exifStart + 3] === 0x66
+        && bytes[exifStart + 4] === 0
+        && bytes[exifStart + 5] === 0
+      ) {
+        const tiffStart = exifStart + 6
+        if (tiffStart + 8 > bytes.length) return 1
+        const littleEndian = bytes[tiffStart] === 0x49 && bytes[tiffStart + 1] === 0x49
+        if (!littleEndian && !(bytes[tiffStart] === 0x4d && bytes[tiffStart + 1] === 0x4d)) return 1
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+        const u16 = (position: number) => view.getUint16(position, littleEndian)
+        const u32 = (position: number) => view.getUint32(position, littleEndian)
+        const firstIfdOffset = u32(tiffStart + 4)
+        const ifdStart = tiffStart + firstIfdOffset
+        if (ifdStart + 2 > bytes.length) return 1
+        const entries = u16(ifdStart)
+        for (let index = 0; index < entries; index += 1) {
+          const entry = ifdStart + 2 + index * 12
+          if (entry + 12 > bytes.length) break
+          if (u16(entry) === 0x0112) return u16(entry + 8)
+        }
+      }
+    }
+    offset += 2 + length
+  }
+  return 1
+}
+
+async function decodeProductImage(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void; drawOriented: (context: CanvasRenderingContext2D) => void }> {
   if (typeof createImageBitmap === 'function') {
-    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-    return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() }
+    const orientation = await readJpegOrientation(file)
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'none' })
+    const swap = orientation >= 5
+    const width = swap ? bitmap.height : bitmap.width
+    const height = swap ? bitmap.width : bitmap.height
+    return {
+      source: bitmap,
+      width,
+      height,
+      close: () => bitmap.close(),
+      drawOriented: (context) => {
+        context.save()
+        context.setTransform(1, 0, 0, 1, 0, 0)
+        const targetWidth = context.canvas.width
+        const targetHeight = context.canvas.height
+        switch (orientation) {
+          case 2:
+            context.translate(targetWidth, 0)
+            context.scale(-1, 1)
+            break
+          case 3:
+            context.translate(targetWidth, targetHeight)
+            context.rotate(Math.PI)
+            break
+          case 4:
+            context.translate(0, targetHeight)
+            context.scale(1, -1)
+            break
+          case 5:
+            context.transform(0, targetHeight / bitmap.width, targetWidth / bitmap.height, 0, 0, 0)
+            break
+          case 6:
+            context.transform(0, targetHeight / bitmap.width, -targetWidth / bitmap.height, 0, targetWidth, 0)
+            break
+          case 7:
+            context.transform(0, -targetHeight / bitmap.width, -targetWidth / bitmap.height, 0, targetWidth, targetHeight)
+            break
+          case 8:
+            context.transform(0, -targetHeight / bitmap.width, targetWidth / bitmap.height, 0, 0, targetHeight)
+            break
+        }
+        if (orientation === 1 || orientation === 2 || orientation === 3 || orientation === 4) {
+          context.drawImage(bitmap, 0, 0, targetWidth, targetHeight)
+        } else {
+          context.drawImage(bitmap, 0, 0)
+        }
+        context.restore()
+      },
+    }
   }
   const objectUrl = URL.createObjectURL(file)
   const image = new Image()
@@ -600,6 +708,7 @@ async function decodeProductImage(file: File): Promise<{ source: CanvasImageSour
     source: image,
     width: image.naturalWidth,
     height: image.naturalHeight,
+    drawOriented: (context) => context.drawImage(image, 0, 0, context.canvas.width, context.canvas.height),
     close: () => {
       image.removeAttribute('src')
       URL.revokeObjectURL(objectUrl)
@@ -614,7 +723,7 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<B
     }, 'image/jpeg', quality)
   })
 }
-async function compressProductImage(file: File, isCancelled: () => boolean): Promise<CompressedProductImage> {
+async function compressProductImage(file: File, isCancelled: () => boolean, rotation = 0): Promise<CompressedProductImage> {
   let decoded: Awaited<ReturnType<typeof decodeProductImage>>
   try {
     decoded = await decodeProductImage(file)
@@ -625,13 +734,29 @@ async function compressProductImage(file: File, isCancelled: () => boolean): Pro
     decoded.close()
     throw new Error('تعذر تحديد أبعاد الصورة لضغطها.')
   }
+  const normalizedRotation = ((rotation % 4) + 4) % 4
   const scale = Math.min(1, maxProductImageDimension / decoded.width, maxProductImageDimension / decoded.height)
-  let width = Math.max(1, Math.round(decoded.width * scale))
-  let height = Math.max(1, Math.round(decoded.height * scale))
+  const baseWidth = Math.max(1, Math.round(decoded.width * scale))
+  const baseHeight = Math.max(1, Math.round(decoded.height * scale))
+  let width = normalizedRotation % 2 === 0 ? baseWidth : baseHeight
+  let height = normalizedRotation % 2 === 0 ? baseHeight : baseWidth
+  const normalizedCanvas = document.createElement('canvas')
+  normalizedCanvas.width = decoded.width
+  normalizedCanvas.height = decoded.height
+  const normalizedContext = normalizedCanvas.getContext('2d', { alpha: false })
+  if (!normalizedContext) {
+    decoded.close()
+    throw new Error('تعذر تجهيز الصورة لضغطها على هذا الجهاز.')
+  }
+  normalizedContext.fillStyle = '#fff'
+  normalizedContext.fillRect(0, 0, normalizedCanvas.width, normalizedCanvas.height)
+  decoded.drawOriented(normalizedContext)
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d', { alpha: false })
   if (!context) {
     decoded.close()
+    normalizedCanvas.width = 0
+    normalizedCanvas.height = 0
     throw new Error('تعذر تجهيز الصورة لضغطها على هذا الجهاز.')
   }
   let quality = 0.86
@@ -642,13 +767,29 @@ async function compressProductImage(file: File, isCancelled: () => boolean): Pro
       canvas.height = height
       context.fillStyle = '#fff'
       context.fillRect(0, 0, width, height)
-      context.drawImage(decoded.source, 0, 0, width, height)
+      context.save()
+      if (normalizedRotation === 1) {
+        context.translate(width, 0)
+        context.rotate(Math.PI / 2)
+        context.drawImage(normalizedCanvas, 0, 0, height, width)
+      } else if (normalizedRotation === 2) {
+        context.translate(width, height)
+        context.rotate(Math.PI)
+        context.drawImage(normalizedCanvas, 0, 0, width, height)
+      } else if (normalizedRotation === 3) {
+        context.translate(0, height)
+        context.rotate(-Math.PI / 2)
+        context.drawImage(normalizedCanvas, 0, 0, height, width)
+      } else {
+        context.drawImage(normalizedCanvas, 0, 0, width, height)
+      }
+      context.restore()
       const blob = await canvasToJpegBlob(canvas, quality)
       if (blob.size <= maxCompressedProductImageSize) {
         const baseName = file.name.replace(/\.[^.]+$/, '') || 'product-image'
         const compressedFile = new File([blob], `${baseName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
         if (compressedFile.size <= maxCompressedProductImageSize) return { file: compressedFile, [compressedProductImageBrand]: true }
-        throw new Error('تعذر ضغط الصورة إلى 200 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
+        throw new Error('تعذر ضغط الصورة إلى 100 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
       }
       const sizeRatio = Math.sqrt(maxCompressedProductImageSize / blob.size)
       const nextQuality = quality * Math.min(0.9, sizeRatio * 0.9)
@@ -656,11 +797,13 @@ async function compressProductImage(file: File, isCancelled: () => boolean): Pro
         quality = nextQuality
       } else {
         const resizeFactor = Math.max(0.5, Math.min(0.85, sizeRatio * 0.9))
-        const nextScale = Math.min(width / decoded.width, height / decoded.height) * resizeFactor
-        const nextWidth = Math.max(1, Math.round(decoded.width * nextScale))
-        const nextHeight = Math.max(1, Math.round(decoded.height * nextScale))
+        const nextScale = Math.min(baseWidth / decoded.width, baseHeight / decoded.height) * resizeFactor
+        const nextBaseWidth = Math.max(1, Math.round(decoded.width * nextScale))
+        const nextBaseHeight = Math.max(1, Math.round(decoded.height * nextScale))
+        const nextWidth = normalizedRotation % 2 === 0 ? nextBaseWidth : nextBaseHeight
+        const nextHeight = normalizedRotation % 2 === 0 ? nextBaseHeight : nextBaseWidth
         if (nextWidth === width && nextHeight === height) {
-          throw new Error('تعذر ضغط الصورة إلى 200 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
+          throw new Error('تعذر ضغط الصورة إلى 100 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
         }
         width = nextWidth
         height = nextHeight
@@ -668,19 +811,21 @@ async function compressProductImage(file: File, isCancelled: () => boolean): Pro
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 0))
     }
-    throw new Error('تعذر ضغط الصورة إلى 200 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
+    throw new Error('تعذر ضغط الصورة إلى 100 KB أو أقل. اختر صورة أصغر أو أقل دقة.')
   } catch (error) {
     if (error instanceof Error && /^[\u0600-\u06FF]/.test(error.message)) throw error
     throw new Error('حدث خطأ أثناء ضغط الصورة. جرّب صورة أخرى.', { cause: error })
   } finally {
     canvas.width = 0
     canvas.height = 0
+    normalizedCanvas.width = 0
+    normalizedCanvas.height = 0
     decoded.close()
   }
 }
 function uploadProductImage(image: CompressedProductImage, config: CloudinarySettings, onProgress: (percent: number) => void): { promise: Promise<string>; abort: () => void } {
   if (image[compressedProductImageBrand] !== true || image.file.type !== 'image/jpeg' || image.file.size > maxCompressedProductImageSize) {
-    throw new Error('تم إيقاف الرفع لأن الصورة المضغوطة يجب ألا تتجاوز 200 KB.')
+    throw new Error('تم إيقاف الرفع لأن الصورة المضغوطة يجب ألا تتجاوز 100 KB.')
   }
   const formData = new FormData()
   formData.append('file', image.file)
@@ -763,6 +908,24 @@ function uploadProductImage(image: CompressedProductImage, config: CloudinarySet
     },
   }
 }
+async function uploadStagedProductImage(form: HTMLFormElement, status: HTMLElement): Promise<string | null> {
+  const staged = stagedProductImages.get(form)
+  if (!staged?.compressed || !currentUser) return null
+  status.textContent = 'جارٍ تحميل إعدادات Cloudinary...'
+  const config = await readUserCloudinarySettings(currentUser, dataUserId)
+  if (!validCloudinarySettings(config)) throw new Error('أدخل Cloud name وUpload Preset واحفظهما في إعدادات رفع الصور أولًا.')
+  status.textContent = 'جارٍ رفع الصورة النهائية...'
+  const request = uploadProductImage(staged.compressed, config, (percent) => {
+    status.textContent = `جارٍ رفع الصورة النهائية... ${percent}%`
+  })
+  const secureUrl = await request.promise
+  if (staged.previewUrl) URL.revokeObjectURL(staged.previewUrl)
+  stagedProductImages.delete(form)
+  const input = form.querySelector<HTMLInputElement>('input[name="imageUrl"]')
+  if (input) input.value = secureUrl
+  status.textContent = 'تم رفع الصورة بالاتجاه المحدد.'
+  return secureUrl
+}
 function uploadErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : ''
   if (message) console.error('Product image upload failed:', error)
@@ -816,6 +979,8 @@ function bindProductImageField(container: ParentNode) {
   const sourceButtons = [...sourceOptions.querySelectorAll<HTMLButtonElement>('[data-image-source]')]
   const preview = container.querySelector<HTMLElement>('.product-image-preview')!
   const image = preview.querySelector<HTMLImageElement>('img')!
+  const deleteButton = preview.querySelector<HTMLButtonElement>('.product-image-delete-button')!
+  const rotateButton = preview.querySelector<HTMLButtonElement>('.product-image-rotate-button')!
   const status = preview.querySelector<HTMLElement>('p')!
   const error = container.querySelector<HTMLElement>('.image-url-error')!
   container.querySelector<HTMLButtonElement>('.image-help-trigger')!.addEventListener('click', (event) => {
@@ -876,54 +1041,83 @@ function bindProductImageField(container: ParentNode) {
       fileInput.value = ''
       return
     }
-    const user = currentUser
-    const upload: ActiveImageUpload = {
-      authUid: user.uid,
-      dataUserId,
-      authSessionId,
-      form: input.form!,
-      fileInput,
-      uploadButtons: sourceButtons,
-      status: uploadStatus,
-      cancelled: false,
-    }
-    activeImageUploads.add(upload)
-    upload.observer = new MutationObserver(() => {
-      if (!upload.form.isConnected) cancelImageUpload(upload)
-    })
-    upload.observer.observe(document.body, { childList: true, subtree: true })
+    const form = input.form!
     sourceButtons.forEach((button) => { button.disabled = true })
-    uploadStatus.textContent = 'جارٍ ضغط الصورة محليًا إلى 200 KB أو أقل...'
+    uploadStatus.textContent = 'جارٍ ضغط الصورة محليًا إلى 100 KB أو أقل...'
     try {
-      const compressedImage = await compressProductImage(file, () => !isUploadSessionCurrent(upload))
-      if (!isUploadSessionCurrent(upload)) return
-      uploadStatus.textContent = 'جارٍ تحميل إعدادات Cloudinary...'
-      const config = await readUserCloudinarySettings(user, upload.dataUserId)
-      if (!isUploadSessionCurrent(upload)) return
-      if (!validCloudinarySettings(config)) throw new Error('أدخل Cloud name وUpload Preset واحفظهما في إعدادات رفع الصور أولًا.')
-      uploadStatus.textContent = 'جارٍ رفع الصورة...'
-      const request = uploadProductImage(compressedImage, config, (percent) => {
-        if (isUploadSessionCurrent(upload)) uploadStatus.textContent = `جارٍ رفع الصورة... ${percent}%`
-      })
-      upload.abortRequest = request.abort
-      if (!isUploadSessionCurrent(upload)) {
-        request.abort()
-        return
-      }
-      const secureUrl = await request.promise
-      if (!isUploadSessionCurrent(upload)) return
-      input.value = secureUrl
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      uploadStatus.textContent = 'تم رفع الصورة وإضافتها إلى المعاينة. احفظ المنتج لإتمام التغيير.'
+      const existing = stagedProductImages.get(form)
+      if (existing?.previewUrl) URL.revokeObjectURL(existing.previewUrl)
+      const staged: StagedProductImage = { sourceFile: file, rotation: 0, compressed: null, previewUrl: '' }
+      staged.compressed = await compressProductImage(file, () => !form.isConnected)
+      staged.previewUrl = URL.createObjectURL(staged.compressed.file)
+      stagedProductImages.set(form, staged)
+      preview.hidden = false
+      image.hidden = false
+      status.textContent = ''
+      image.src = staged.previewUrl
+      uploadStatus.textContent = 'تم تجهيز الصورة. يمكنك تدويرها ثم الضغط على حفظ المنتج للرفع.'
     } catch (error) {
-      if (isUploadSessionCurrent(upload)) uploadStatus.textContent = uploadErrorMessage(error)
+      uploadStatus.textContent = error instanceof Error ? error.message : 'تعذر تجهيز الصورة.'
     } finally {
-      upload.observer?.disconnect()
-      activeImageUploads.delete(upload)
       fileInput.value = ''
-      if (isUploadSessionCurrent(upload)) sourceButtons.forEach((button) => { button.disabled = false })
+      sourceButtons.forEach((button) => { button.disabled = false })
     }
   }
+  rotateButton.addEventListener('click', async () => {
+    const form = input.form
+    if (!form) return
+    rotateButton.disabled = true
+    sourceButtons.forEach((button) => { button.disabled = true })
+    uploadStatus.textContent = 'جارٍ تدوير الصورة...'
+    try {
+      let staged = stagedProductImages.get(form)
+      if (!staged) {
+        const imageUrl = normalizeProductImageUrl(input.value)
+        if (!imageUrl) throw new Error('اختر صورة أو أدخل رابطًا صالحًا أولًا.')
+        const response = await fetch(optimizedProductImageUrl(imageUrl), { mode: 'cors', credentials: 'omit' })
+        if (!response.ok) throw new Error('تعذر تحميل الصورة المحفوظة للتدوير.')
+        const blob = await response.blob()
+        if (!allowedProductImageTypes.has(blob.type) && !/^image\/(jpeg|png|webp)$/i.test(blob.type)) {
+          throw new Error('صيغة الصورة المحفوظة غير مدعومة للتدوير.')
+        }
+        const type = blob.type || 'image/jpeg'
+        const fileName = `saved-product-image.${type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'}`
+        staged = {
+          sourceFile: new File([blob], fileName, { type }),
+          rotation: 0,
+          compressed: null,
+          previewUrl: '',
+        }
+        stagedProductImages.set(form, staged)
+      }
+      staged.rotation = (staged.rotation + 1) % 4
+      staged.compressed = await compressProductImage(staged.sourceFile, () => !form.isConnected, staged.rotation)
+      if (staged.previewUrl) URL.revokeObjectURL(staged.previewUrl)
+      staged.previewUrl = URL.createObjectURL(staged.compressed.file)
+      preview.hidden = false
+      image.hidden = false
+      status.textContent = ''
+      image.src = staged.previewUrl
+      uploadStatus.textContent = 'تم تدوير الصورة. اضغط حفظ المنتج لرفع النسخة النهائية.'
+    } catch (error) {
+      uploadStatus.textContent = error instanceof Error ? error.message : 'تعذر تدوير الصورة.'
+    } finally {
+      rotateButton.disabled = false
+      sourceButtons.forEach((button) => { button.disabled = false })
+    }
+  })
+  deleteButton.addEventListener('click', () => {
+    const form = input.form
+    if (!form) return
+    const staged = stagedProductImages.get(form)
+    if (staged?.previewUrl) URL.revokeObjectURL(staged.previewUrl)
+    stagedProductImages.delete(form)
+    input.value = ''
+    image.removeAttribute('src')
+    preview.hidden = true
+    status.textContent = ''
+    uploadStatus.textContent = 'تم حذف الصورة. سيصبح المنتج بدون صورة عند الحفظ.'
+  })
   for (const fileInput of [cameraInput, galleryInput]) {
     fileInput.addEventListener('change', handleImageSelection)
     fileInput.addEventListener('cancel', () => { fileInput.value = '' })
@@ -994,12 +1188,16 @@ function renderSingleProductForm(content: HTMLElement, element: HTMLElement) {
     const button = content.querySelector<HTMLButtonElement>('button[type="submit"]')!
     button.disabled = true
     try {
-      await addDoc(collection(db, 'users', dataUserId, 'products'), productDocumentData(name, priceInput, nextProductNumber(), categoryId, imageUrl))
+      const htmlForm = event.currentTarget as HTMLFormElement
+      const uploadStatus = htmlForm.querySelector<HTMLElement>('.product-image-upload-status')!
+      const stagedUrl = await uploadStagedProductImage(htmlForm, uploadStatus)
+      const finalImageUrl = normalizeProductImageUrl(stagedUrl || imageUrlInput)
+      await addDoc(collection(db, 'users', dataUserId, 'products'), productDocumentData(name, priceInput, nextProductNumber(), categoryId, finalImageUrl))
       updateProductList()
       element.remove()
     } catch (addError) {
       button.disabled = false
-      error.textContent = friendlyError(addError)
+      error.textContent = stagedProductImages.has(event.currentTarget as HTMLFormElement) ? uploadErrorMessage(addError) : friendlyError(addError)
     }
   })
 }
@@ -1150,16 +1348,20 @@ function renderEditModal(id: string) {
     const button = element.querySelector<HTMLButtonElement>('button[type="submit"]')!
     button.disabled = true
     try {
+      const htmlForm = event.currentTarget as HTMLFormElement
+      const uploadStatus = htmlForm.querySelector<HTMLElement>('.product-image-upload-status')!
+      const stagedUrl = await uploadStagedProductImage(htmlForm, uploadStatus)
+      const finalImageUrl = normalizeProductImageUrl(stagedUrl || imageUrlInput)
       await updateDoc(doc(db, 'users', dataUserId, 'products', id), {
         name,
         price: Number.isFinite(price) ? price : null,
         categoryId,
-        imageUrl: imageUrl || deleteField(),
+        imageUrl: finalImageUrl || deleteField(),
       })
       element.remove()
     } catch (updateError) {
       button.disabled = false
-      error.textContent = friendlyError(updateError)
+      error.textContent = stagedProductImages.has(event.currentTarget as HTMLFormElement) ? uploadErrorMessage(updateError) : friendlyError(updateError)
     }
   })
 }
@@ -1338,6 +1540,379 @@ function bindCloudinarySettingsPanel(content: HTMLElement) {
   })
   void load()
 }
+function renderInvoiceModal() {
+  if (!currentUser) {
+    showToast('يجب تسجيل الدخول أولًا.')
+    return
+  }
+  const quantities = new Map<string, number>()
+  const priceOverrides = new Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>()
+  let activeType: InvoiceType = 'wholesale'
+  const element = modal(`
+    <button class="modal-close invoice-close" aria-label="إغلاق">${svg('close')}</button>
+    <div class="invoice-modal">
+      <h2>حساب فاتورة</h2>
+      <div class="invoice-tabs" role="tablist" aria-label="نوع السعر">
+        <button type="button" data-invoice-type="wholesale" class="active" role="tab" aria-selected="true">جملة</button>
+        <button type="button" data-invoice-type="retail" role="tab" aria-selected="false">مفرق</button>
+      </div>
+      <div class="invoice-search search-box">${svg('search')}<input id="invoice-search" type="search" placeholder="ابحث عن قطعة..." autocomplete="off"></div>
+      <div class="invoice-product-list" id="invoice-product-list"></div>
+      <div class="invoice-summary" id="invoice-summary"></div>
+      <div class="invoice-export-actions">
+        <input id="invoice-customer-name" type="text" maxlength="80" placeholder="اسم الزبون (اختياري)" autocomplete="name">
+        <div class="invoice-export-buttons">
+          <button class="primary-button invoice-export" id="export-invoice-usd" type="button">تصدير بالدولار</button>
+          <button class="primary-button invoice-export invoice-export-syp" id="export-invoice-syp" type="button" ${settings.syriaEnabled && settings.exchangeRate > 0 ? '' : 'disabled'}>تصدير بالليرة</button>
+        </div>
+      </div>
+    </div>
+  `)
+  const searchInput = element.querySelector<HTMLInputElement>('#invoice-search')!
+  const list = element.querySelector<HTMLElement>('#invoice-product-list')!
+  const summary = element.querySelector<HTMLElement>('#invoice-summary')!
+  const exportUsdButton = element.querySelector<HTMLButtonElement>('#export-invoice-usd')!
+  const exportSypButton = element.querySelector<HTMLButtonElement>('#export-invoice-syp')!
+  const customerNameInput = element.querySelector<HTMLInputElement>('#invoice-customer-name')!
+  const closeButton = element.querySelector<HTMLButtonElement>('.invoice-close')!
+
+  closeButton.addEventListener('click', () => element.remove())
+  const unitPrice = (product: Product) => {
+    const override = priceOverrides.get(product.id)?.[activeType]
+    if (override && Number.isFinite(override.usd) && override.usd > 0) return override.usd
+    if (!Number.isFinite(product.price) || product.price <= 0) return null
+    const price = activeType === 'retail' ? getRetailPrice(product.price) : product.price
+    return Number.isFinite(price) && price >= 0 ? price : null
+  }
+  const update = () => {
+    for (const [id] of quantities) {
+      const product = products.find((item) => item.id === id)
+      if (!product || unitPrice(product) === null) quantities.delete(id)
+    }
+    const term = searchInput.value.trim().toLocaleLowerCase('ar')
+    const visible = products
+      .filter((product) => product.name.toLocaleLowerCase('ar').includes(term))
+      .sort((left, right) => {
+        const leftSelected = quantities.has(left.id)
+        const rightSelected = quantities.has(right.id)
+        if (leftSelected !== rightSelected) return leftSelected ? -1 : 1
+        return naturalSort(left, right)
+      })
+    list.innerHTML = visible.length ? visible.map((product) => {
+      const quantity = quantities.get(product.id) || 0
+      const price = unitPrice(product)
+      const unpriced = price === null
+      const secondaryAmount = unitSypPrice(product)
+      const secondaryPrice = secondaryAmount !== null && settings.syriaEnabled && settings.exchangeRate > 0
+        ? `<span class="invoice-product-secondary-price"><bdi class="invoice-product-secondary-amount" dir="ltr">${syp(secondaryAmount)}</bdi><span class="invoice-product-secondary-currency">ل.س</span></span>`
+        : ''
+      return `
+        <div class="invoice-product-row ${quantity ? 'is-selected' : ''} ${unpriced ? 'is-unpriced' : ''}">
+          <label class="invoice-product-select">
+            <input type="checkbox" data-invoice-product="${product.id}" ${quantity ? 'checked' : ''} ${unpriced ? 'disabled' : ''}>
+            <span class="invoice-product-name">${highlightProductName(product.name, term)}</span>
+          </label>
+          <div class="invoice-product-prices">
+            <div class="invoice-product-price-values">${unpriced ? '<span class="invoice-product-price">غير مسعر</span>' : `<span class="invoice-product-price">${money(price)}$</span>${secondaryPrice}`}</div>
+            <button type="button" class="invoice-price-edit" data-invoice-price-edit="${product.id}" aria-label="تعديل سعر ${escapeHtml(product.name)}" title="تعديل سعر الفاتورة">${svg('edit')}</button>
+          </div>
+          <input class="invoice-quantity" type="number" min="1" step="1" inputmode="numeric" data-invoice-quantity="${product.id}" value="${quantity || 1}" ${quantity ? '' : 'disabled'} aria-label="كمية ${escapeHtml(product.name)}">
+        </div>
+      `
+    }).join('') : '<p class="empty-copy">لا توجد منتجات مطابقة للبحث.</p>'
+    list.querySelectorAll<HTMLInputElement>('input[data-invoice-product]').forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        const id = checkbox.dataset.invoiceProduct!
+        const listScrollTop = list.scrollTop
+        const pageScrollTop = window.scrollY
+        if (checkbox.checked) {
+          quantities.set(id, 1)
+        } else {
+          quantities.delete(id)
+        }
+        update()
+        requestAnimationFrame(() => {
+          if (!element.isConnected) return
+          list.scrollTop = listScrollTop
+          window.scrollTo({ top: pageScrollTop, behavior: 'auto' })
+        })
+      })
+    })
+    list.querySelectorAll<HTMLInputElement>('input[data-invoice-quantity]').forEach((quantityInput) => {
+      quantityInput.addEventListener('input', () => {
+        const id = quantityInput.dataset.invoiceQuantity!
+        const quantity = Math.max(1, Math.floor(Number(quantityInput.value) || 1))
+        quantities.set(id, quantity)
+        updateSummary()
+      })
+      quantityInput.addEventListener('blur', () => {
+        const id = quantityInput.dataset.invoiceQuantity!
+        const quantity = Math.max(1, Math.floor(Number(quantityInput.value) || 1))
+        quantityInput.value = String(quantity)
+        quantities.set(id, quantity)
+        updateSummary()
+      })
+    })
+    list.querySelectorAll<HTMLButtonElement>('[data-invoice-price-edit]').forEach((editButton) => {
+      editButton.addEventListener('click', () => {
+        const product = products.find((item) => item.id === editButton.dataset.invoicePriceEdit)
+        if (product) openPriceEditor(product)
+      })
+    })
+    updateSummary()
+  }
+  const unitSypPrice = (product: Product) => {
+    const override = priceOverrides.get(product.id)?.[activeType]
+    if (override && Number.isFinite(override.syp) && override.syp !== null && override.syp >= 0) return override.syp
+    const price = unitPrice(product)
+    return price !== null && settings.exchangeRate > 0 ? Math.round(price * settings.exchangeRate) : null
+  }
+  const updateSummary = () => {
+    let pieces = 0
+    let totalUsd = 0
+    let totalSyp = 0
+    quantities.forEach((quantity, id) => {
+      const product = products.find((item) => item.id === id)
+      if (!product) return
+      const price = unitPrice(product)
+      if (price === null) return
+      pieces += quantity
+      totalUsd += price * quantity
+      totalSyp += (unitSypPrice(product) ?? 0) * quantity
+    })
+    summary.innerHTML = `
+      <div><span>عدد الاصناف</span><strong>${quantities.size}</strong></div>
+      <div><span>عدد القطع</span><strong>${pieces}</strong></div>
+      <div class="invoice-summary-total"><span>الإجمالي</span><strong>${money(totalUsd)}$</strong>${settings.syriaEnabled && settings.exchangeRate > 0
+        ? `<strong class="invoice-summary-secondary"><bdi dir="ltr">${syp(totalSyp)}</bdi><span>ل.س</span></strong>`
+        : '<strong class="invoice-summary-secondary">فعّل الليرة من الإعدادات</strong>'}</div>
+    `
+  }
+  const openPriceEditor = (product: Product) => {
+    document.querySelector<HTMLElement>('.invoice-price-editor-backdrop')?.remove()
+    const currentUsd = unitPrice(product)
+    const hasExchangeRate = settings.syriaEnabled && Number.isFinite(settings.exchangeRate) && settings.exchangeRate > 0
+    const currentSyp = hasExchangeRate ? unitSypPrice(product) : null
+    const editor = document.createElement('div')
+    editor.className = 'invoice-price-editor-backdrop'
+    editor.innerHTML = `
+        <section class="invoice-price-editor" role="dialog" aria-modal="true" aria-labelledby="invoice-price-editor-title">
+          <button type="button" class="invoice-price-editor-close" aria-label="إغلاق">${svg('close')}</button>
+          <h3 id="invoice-price-editor-title">تعديل سعر الفاتورة</h3>
+          <p class="invoice-price-editor-product">${escapeHtml(product.name)}</p>
+          <label>السعر بالدولار<input class="invoice-edit-usd" type="number" min="0.01" step="0.01" inputmode="decimal" value="${currentUsd === null ? '' : currentUsd}"></label>
+          <label>السعر بالليرة السورية<input class="invoice-edit-syp" type="number" min="1" step="1" inputmode="numeric" value="${currentSyp === null ? '' : currentSyp}" ${hasExchangeRate ? '' : 'disabled'}></label>
+          <p class="invoice-price-editor-note">${hasExchangeRate ? 'يمكن تعديل أي من السعرين وسيتم تحديث السعر الآخر حسب سعر الصرف.' : 'فعّل الليرة وأدخل سعر الصرف من الإعدادات لتعديل السعر بالليرة.'} هذا التعديل خاص بهذه الفاتورة فقط ولا يغيّر السعر الأساسي المحفوظ للمنتج.</p>
+          <p class="invoice-price-editor-error" role="status" aria-live="polite"></p>
+          <div class="invoice-price-editor-actions">
+            <button type="button" class="secondary-button invoice-price-editor-cancel">إلغاء</button>
+            <button type="button" class="primary-button invoice-price-editor-save">حفظ التعديل</button>
+          </div>
+        </section>
+    `
+    const usdInput = editor.querySelector<HTMLInputElement>('.invoice-edit-usd')!
+    const sypInput = editor.querySelector<HTMLInputElement>('.invoice-edit-syp')!
+    const error = editor.querySelector<HTMLElement>('.invoice-price-editor-error')!
+    const closeEditor = () => {
+        document.removeEventListener('keydown', handleEditorKeydown)
+        editor.remove()
+    }
+    const handleEditorKeydown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') closeEditor()
+    }
+    usdInput.addEventListener('input', () => {
+        const usd = Number(usdInput.value)
+        if (hasExchangeRate && Number.isFinite(usd) && usd > 0) {
+          sypInput.value = String(Math.round(usd * settings.exchangeRate))
+        }
+        error.textContent = ''
+    })
+    sypInput.addEventListener('input', () => {
+        const sypPrice = Number(sypInput.value)
+        if (hasExchangeRate && Number.isFinite(sypPrice) && sypPrice > 0) {
+          usdInput.value = Number((sypPrice / settings.exchangeRate).toFixed(2)).toString()
+        }
+        error.textContent = ''
+    })
+    editor.querySelector<HTMLButtonElement>('.invoice-price-editor-close')!.addEventListener('click', closeEditor)
+    editor.querySelector<HTMLButtonElement>('.invoice-price-editor-cancel')!.addEventListener('click', closeEditor)
+    editor.addEventListener('click', (event) => {
+        if (event.target === editor) closeEditor()
+    })
+    editor.querySelector<HTMLButtonElement>('.invoice-price-editor-save')!.addEventListener('click', () => {
+        const usd = Number(usdInput.value)
+        const sypPrice = Number(sypInput.value)
+        if (!Number.isFinite(usd) || usd <= 0) {
+          error.textContent = 'أدخل سعرًا صالحًا بالدولار.'
+          usdInput.focus()
+          return
+        }
+        if (hasExchangeRate && (!Number.isFinite(sypPrice) || sypPrice <= 0)) {
+          error.textContent = 'أدخل سعرًا صالحًا بالليرة السورية.'
+          sypInput.focus()
+          return
+        }
+        const productOverrides = priceOverrides.get(product.id) || {}
+        productOverrides[activeType] = { usd, syp: hasExchangeRate ? Math.round(sypPrice) : null }
+        priceOverrides.set(product.id, productOverrides)
+        const listScrollTop = list.scrollTop
+        const pageScrollTop = window.scrollY
+        closeEditor()
+        update()
+        requestAnimationFrame(() => {
+          if (!element.isConnected) return
+          list.scrollTop = listScrollTop
+          window.scrollTo({ top: pageScrollTop, behavior: 'auto' })
+        })
+    })
+    document.addEventListener('keydown', handleEditorKeydown)
+    document.body.append(editor)
+    usdInput.focus()
+  }
+  element.querySelectorAll<HTMLButtonElement>('[data-invoice-type]').forEach((button) => {
+    button.addEventListener('click', () => {
+      activeType = button.dataset.invoiceType === 'retail' ? 'retail' : 'wholesale'
+      element.querySelectorAll<HTMLButtonElement>('[data-invoice-type]').forEach((tab) => {
+        const active = tab === button
+        tab.classList.toggle('active', active)
+        tab.setAttribute('aria-selected', String(active))
+      })
+      update()
+    })
+  })
+  searchInput.addEventListener('input', update)
+  exportUsdButton.addEventListener('click', () => {
+    void exportInvoiceToExcel(exportUsdButton, activeType, quantities, priceOverrides, customerNameInput.value.trim(), 'usd')
+  })
+  exportSypButton.addEventListener('click', () => {
+    if (!settings.syriaEnabled || settings.exchangeRate <= 0) {
+      showToast('فعّل الليرة وأدخل سعر الصرف من الإعدادات أولًا.')
+      return
+    }
+    void exportInvoiceToExcel(exportSypButton, activeType, quantities, priceOverrides, customerNameInput.value.trim(), 'syp')
+  })
+  update()
+}
+
+async function exportInvoiceToExcel(
+  button: HTMLButtonElement,
+  invoiceType: 'wholesale' | 'retail',
+  quantities: Map<string, number>,
+  priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
+  customerName: string,
+  currency: 'usd' | 'syp',
+) {
+  if (!quantities.size) {
+    showToast('اختر صنفًا واحدًا على الأقل.')
+    return
+  }
+  if (currency === 'syp' && (!settings.syriaEnabled || settings.exchangeRate <= 0)) {
+    showToast('فعّل الليرة وأدخل سعر الصرف من الإعدادات أولًا.')
+    return
+  }
+  button.disabled = true
+  try {
+    const rows = [...quantities.entries()].map(([id, quantity]) => {
+      const product = products.find((item) => item.id === id)
+      return product ? { product, quantity } : null
+    }).filter((row): row is { product: Product; quantity: number } => row !== null)
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('فاتورة', {
+      views: [{ rightToLeft: true, state: 'frozen', ySplit: 4 }],
+      pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
+    })
+    worksheet.columns = [
+      { key: 'order', width: 6 },
+      { key: 'name', width: 30 },
+      { key: 'quantity', width: 10 },
+      { key: 'price', width: 14 },
+      { key: 'total', width: 14 },
+    ]
+    const nowUtcPlusThree = new Date(Date.now() + (3 * 60 * 60 * 1000))
+    const isoUtcPlusThree = nowUtcPlusThree.toISOString()
+    const dateValue = isoUtcPlusThree.slice(0, 10).replaceAll('-', '/')
+    const timeValue = isoUtcPlusThree.slice(11, 16)
+    const titleRow = worksheet.addRow(['المسالمة للدراجات النارية وقطع الغيار'])
+    worksheet.mergeCells(`A${titleRow.number}:E${titleRow.number}`)
+    const customerText = customerName || '                                       '
+    const customerDateRow = worksheet.addRow([{
+      richText: [
+        { text: 'الزبون ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+        { text: customerText, font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FF007D79' } } },
+        { text: ` المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+      ],
+    }])
+    worksheet.mergeCells(`A${customerDateRow.number}:E${customerDateRow.number}`)
+    worksheet.addRow([])
+    worksheet.addRow(['م', 'الصنف', 'الكمية', `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`])
+    let finalTotal = 0
+    rows.forEach(({ product, quantity }, index) => {
+      const override = priceOverrides.get(product.id)?.[invoiceType]
+      const savedPrice = Number.isFinite(product.price) && product.price > 0
+        ? invoiceType === 'retail' ? getRetailPrice(product.price) : product.price
+        : null
+      const usdPrice = override && Number.isFinite(override.usd) && override.usd > 0 ? override.usd : savedPrice
+      if (usdPrice === null) return
+      const price = currency === 'syp'
+        ? override && Number.isFinite(override.syp) && override.syp !== null && override.syp > 0
+          ? override.syp
+          : Math.round(usdPrice * settings.exchangeRate)
+        : usdPrice
+      const lineTotal = price * quantity
+      finalTotal += lineTotal
+      worksheet.addRow({
+        order: index + 1,
+        name: product.name,
+        quantity,
+        price,
+        total: lineTotal,
+      })
+    })
+    const totalRow = worksheet.addRow({
+      order: '',
+      name: 'الإجمالي النهائي',
+      quantity: '',
+      price: '',
+      total: finalTotal,
+    })
+    worksheet.eachRow((row, rowNumber) => {
+      row.height = rowNumber === 1 ? 30 : rowNumber === 2 ? 28 : rowNumber === 3 ? 24 : 24
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        const isTitle = rowNumber === 1
+        const isCustomer = rowNumber === 2
+        const isHeader = rowNumber === 4
+        const isTotal = rowNumber === totalRow.number
+        cell.alignment = { horizontal: isTitle || isCustomer ? 'center' : 'right', vertical: 'middle' }
+        if (!isCustomer) {
+          cell.font = { name: 'Arial', size: isTitle ? 16 : isHeader || isTotal ? 12 : 11, bold: isTitle || isHeader || isTotal, color: { argb: isHeader ? 'FFFFFFFF' : isTitle ? 'FF007D79' : 'FF203044' } }
+        }
+        if (isTitle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7F9' } }
+        if (isHeader) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
+        if (isTotal) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE4F3F0' } }
+      })
+    })
+    worksheet.getColumn('price').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
+    worksheet.getColumn('total').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}.xlsx`
+    document.body.append(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    showToast('تم تصدير الفاتورة بنجاح.')
+  } catch (error) {
+    console.error('Failed to export invoice:', error)
+    showToast('تعذر تصدير الفاتورة. حاول مجددًا.')
+  } finally {
+    button.disabled = false
+  }
+}
+
 async function exportProductsToExcel(button: HTMLButtonElement) {
   if (!currentUser) {
     showToast('يجب تسجيل الدخول أولًا.')
