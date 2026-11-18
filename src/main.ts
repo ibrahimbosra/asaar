@@ -1781,6 +1781,11 @@ function renderInvoiceModal() {
         <h3 id="invoice-customer-export-title">تصدير الفاتورة</h3>
         <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span></label>
         <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="أدخل اسم الزبون إن رغبت" autocomplete="name">
+        <fieldset class="invoice-export-format">
+          <legend>نوع التصدير</legend>
+          <label><input type="radio" name="invoice-export-format" value="excel" checked> ملف Excel</label>
+          <label><input type="radio" name="invoice-export-format" value="image"> صورة PNG</label>
+        </fieldset>
         <p>سيتم تصدير الفاتورة ${currency === 'syp' ? 'بالليرة السورية' : 'بالدولار'}.</p>
         <div class="invoice-customer-export-actions">
           <button type="button" class="secondary-button invoice-customer-export-cancel">إلغاء</button>
@@ -1801,8 +1806,10 @@ function renderInvoiceModal() {
     backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-cancel')!.addEventListener('click', closeDialog)
     backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-confirm')!.addEventListener('click', () => {
       const customerName = nameInput.value.trim()
+      const format = backdrop.querySelector<HTMLInputElement>('input[name="invoice-export-format"]:checked')!.value
       closeDialog()
-      void exportInvoiceToExcel(button, invoiceType, quantities, priceOverrides, customerName, currency)
+      const exportInvoice = format === 'image' ? exportInvoiceToImage : exportInvoiceToExcel
+      void exportInvoice(button, invoiceType, quantities, priceOverrides, customerName, currency)
     })
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) closeDialog()
@@ -1837,6 +1844,34 @@ function renderInvoiceModal() {
   update()
 }
 
+type InvoiceExportRow = { product: Product; quantity: number; price: number; total: number }
+
+function getInvoiceExportRows(
+  invoiceType: InvoiceType,
+  quantities: Map<string, number>,
+  priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
+  currency: 'usd' | 'syp',
+): InvoiceExportRow[] {
+  const rows: InvoiceExportRow[] = []
+  quantities.forEach((quantity, id) => {
+    const product = products.find((item) => item.id === id)
+    if (!product) return
+    const override = priceOverrides.get(product.id)?.[invoiceType]
+    const savedPrice = Number.isFinite(product.price) && product.price > 0
+      ? invoiceType === 'retail' ? getRetailPrice(product.price) : product.price
+      : null
+    const usdPrice = override && Number.isFinite(override.usd) && override.usd > 0 ? override.usd : savedPrice
+    if (usdPrice === null) return
+    const price = currency === 'syp'
+      ? override && Number.isFinite(override.syp) && override.syp !== null && override.syp > 0
+        ? override.syp
+        : Math.round(usdPrice * settings.exchangeRate)
+      : usdPrice
+    rows.push({ product, quantity, price, total: price * quantity })
+  })
+  return rows
+}
+
 async function exportInvoiceToExcel(
   button: HTMLButtonElement,
   invoiceType: 'wholesale' | 'retail',
@@ -1855,10 +1890,11 @@ async function exportInvoiceToExcel(
   }
   button.disabled = true
   try {
-    const rows = [...quantities.entries()].map(([id, quantity]) => {
-      const product = products.find((item) => item.id === id)
-      return product ? { product, quantity } : null
-    }).filter((row): row is { product: Product; quantity: number } => row !== null)
+    const rows = getInvoiceExportRows(invoiceType, quantities, priceOverrides, currency)
+    if (!rows.length) {
+      showToast('لا توجد أصناف صالحة للتصدير.')
+      return
+    }
     const ExcelJS = await import('exceljs')
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('فاتورة', {
@@ -1889,27 +1925,14 @@ async function exportInvoiceToExcel(
     worksheet.mergeCells(`A${customerDateRow.number}:E${customerDateRow.number}`)
     worksheet.addRow([])
     worksheet.addRow(['م', 'الصنف', 'الكمية', `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`])
-    let finalTotal = 0
-    rows.forEach(({ product, quantity }, index) => {
-      const override = priceOverrides.get(product.id)?.[invoiceType]
-      const savedPrice = Number.isFinite(product.price) && product.price > 0
-        ? invoiceType === 'retail' ? getRetailPrice(product.price) : product.price
-        : null
-      const usdPrice = override && Number.isFinite(override.usd) && override.usd > 0 ? override.usd : savedPrice
-      if (usdPrice === null) return
-      const price = currency === 'syp'
-        ? override && Number.isFinite(override.syp) && override.syp !== null && override.syp > 0
-          ? override.syp
-          : Math.round(usdPrice * settings.exchangeRate)
-        : usdPrice
-      const lineTotal = price * quantity
-      finalTotal += lineTotal
+    const finalTotal = rows.reduce((total, row) => total + row.total, 0)
+    rows.forEach(({ product, quantity, price, total }, index) => {
       worksheet.addRow({
         order: index + 1,
         name: product.name,
         quantity,
         price,
-        total: lineTotal,
+        total,
       })
     })
     const totalRow = worksheet.addRow({
@@ -1951,6 +1974,184 @@ async function exportInvoiceToExcel(
   } catch (error) {
     console.error('Failed to export invoice:', error)
     showToast('تعذر تصدير الفاتورة. حاول مجددًا.')
+  } finally {
+    button.disabled = false
+  }
+}
+
+async function exportInvoiceToImage(
+  button: HTMLButtonElement,
+  invoiceType: InvoiceType,
+  quantities: Map<string, number>,
+  priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
+  customerName: string,
+  currency: 'usd' | 'syp',
+) {
+  if (!quantities.size) {
+    showToast('اختر صنفًا واحدًا على الأقل.')
+    return
+  }
+  if (currency === 'syp' && (!settings.syriaEnabled || settings.exchangeRate <= 0)) {
+    showToast('فعّل الليرة وأدخل سعر الصرف من الإعدادات أولًا.')
+    return
+  }
+  button.disabled = true
+  try {
+    const rows = getInvoiceExportRows(invoiceType, quantities, priceOverrides, currency)
+    if (!rows.length) {
+      showToast('لا توجد أصناف صالحة للتصدير.')
+      return
+    }
+    const width = 1200
+    const margin = 36
+    const rightEdge = width - margin
+    const columnEdges = [margin, 280, 520, 660, 1104, rightEdge]
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Canvas 2D context is unavailable')
+    context.font = '22px Arial, sans-serif'
+    context.direction = 'rtl'
+    const nameLines = rows.map(({ product }) => {
+      const words = product.name.trim().split(/\s+/)
+      const lines: string[] = []
+      let line = ''
+      words.forEach((word) => {
+        const candidate = line ? `${line} ${word}` : word
+        if (line && context.measureText(candidate).width > 410) {
+          lines.push(line)
+          line = word
+        } else {
+          line = candidate
+        }
+      })
+      if (line) lines.push(line)
+      return lines.length ? lines : ['']
+    })
+    const rowHeights = nameLines.map((lines) => Math.max(66, lines.length * 28 + 20))
+    const tableTop = 218
+    const headerHeight = 62
+    const rowsHeight = rowHeights.reduce((total, height) => total + height, 0)
+    const summaryTop = tableTop + headerHeight + rowsHeight + 30
+    const height = summaryTop + 112
+    if (height > 32000) {
+      showToast('الفاتورة طويلة جدًا لصورة واحدة. اختر ملف Excel بدلًا منها.')
+      return
+    }
+    canvas.width = width
+    canvas.height = height
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, width, height)
+    context.direction = 'rtl'
+    context.textAlign = 'center'
+    context.fillStyle = '#007d79'
+    context.font = 'bold 38px Arial, sans-serif'
+    context.fillText('المسالمة للدراجات النارية وقطع الغيار', width / 2, 66)
+    const nowUtcPlusThree = new Date(Date.now() + (3 * 60 * 60 * 1000))
+    const isoUtcPlusThree = nowUtcPlusThree.toISOString()
+    const dateValue = isoUtcPlusThree.slice(0, 10).replaceAll('-', '/')
+    const timeValue = isoUtcPlusThree.slice(11, 16)
+    context.fillStyle = '#203044'
+    context.font = '20px Arial, sans-serif'
+    context.fillText(`الزبون: ${customerName || '—'}    المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, width / 2, 125)
+    context.strokeStyle = '#d7e1e4'
+    context.lineWidth = 2
+    context.beginPath()
+    context.moveTo(margin, 169)
+    context.lineTo(rightEdge, 169)
+    context.stroke()
+    context.fillStyle = '#007d79'
+    context.fillRect(margin, tableTop, rightEdge - margin, headerHeight)
+    const headers = [
+      { left: columnEdges[0], right: columnEdges[1], text: `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`, align: 'right' as CanvasTextAlign },
+      { left: columnEdges[1], right: columnEdges[2], text: `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, align: 'right' as CanvasTextAlign },
+      { left: columnEdges[2], right: columnEdges[3], text: 'الكمية', align: 'center' as CanvasTextAlign },
+      { left: columnEdges[3], right: columnEdges[4], text: 'الصنف', align: 'right' as CanvasTextAlign },
+      { left: columnEdges[4], right: columnEdges[5], text: 'م', align: 'center' as CanvasTextAlign },
+    ]
+    context.font = 'bold 20px Arial, sans-serif'
+    context.fillStyle = '#ffffff'
+    headers.forEach((header) => {
+      context.textAlign = header.align
+      const x = header.align === 'center' ? (header.left + header.right) / 2 : header.right - 14
+      context.fillText(header.text, x, tableTop + headerHeight / 2, header.right - header.left - 20)
+    })
+    const formatAmount = (value: number) => currency === 'syp' ? `${syp(value)} ل.س` : `${money(value)} $`
+    let rowTop = tableTop + headerHeight
+    rows.forEach((row, index) => {
+      const rowHeight = rowHeights[index]
+      context.fillStyle = index % 2 === 0 ? '#f5f8f9' : '#ffffff'
+      context.fillRect(margin, rowTop, rightEdge - margin, rowHeight)
+      context.strokeStyle = '#d7e1e4'
+      context.lineWidth = 1
+      context.beginPath()
+      context.moveTo(margin, rowTop + rowHeight)
+      context.lineTo(rightEdge, rowTop + rowHeight)
+      context.stroke()
+      context.fillStyle = '#203044'
+      context.font = '20px Arial, sans-serif'
+      context.textAlign = 'right'
+      context.direction = 'ltr'
+      context.fillText(formatAmount(row.total), columnEdges[1] - 14, rowTop + rowHeight / 2, columnEdges[1] - columnEdges[0] - 20)
+      context.fillText(formatAmount(row.price), columnEdges[2] - 14, rowTop + rowHeight / 2, columnEdges[2] - columnEdges[1] - 20)
+      context.textAlign = 'center'
+      context.fillText(String(row.quantity), (columnEdges[2] + columnEdges[3]) / 2, rowTop + rowHeight / 2)
+      context.direction = 'rtl'
+      context.textAlign = 'right'
+      const lines = nameLines[index]
+      const lineHeight = 28
+      const textTop = rowTop + (rowHeight - (lines.length * lineHeight)) / 2 + lineHeight / 2
+      context.save()
+      context.beginPath()
+      context.rect(columnEdges[3] + 10, rowTop, columnEdges[4] - columnEdges[3] - 20, rowHeight)
+      context.clip()
+      lines.forEach((line, lineIndex) => {
+        context.fillText(line, columnEdges[4] - 14, textTop + lineIndex * lineHeight)
+      })
+      context.restore()
+      context.textAlign = 'center'
+      context.direction = 'ltr'
+      context.fillText(String(index + 1), (columnEdges[4] + columnEdges[5]) / 2, rowTop + rowHeight / 2)
+      rowTop += rowHeight
+    })
+    const pieces = rows.reduce((total, row) => total + row.quantity, 0)
+    const finalTotal = rows.reduce((total, row) => total + row.total, 0)
+    const cardGap = 14
+    const cardWidth = (rightEdge - margin - cardGap * 2) / 3
+    const summaryCards = [
+      { label: 'عدد الأصناف', value: String(rows.length) },
+      { label: 'عدد القطع', value: String(pieces) },
+      { label: 'الإجمالي النهائي', value: formatAmount(finalTotal) },
+    ]
+    summaryCards.forEach((card, index) => {
+      const x = rightEdge - cardWidth - index * (cardWidth + cardGap)
+      context.fillStyle = index === 2 ? '#e4f3f0' : '#007d79'
+      context.fillRect(x, summaryTop, cardWidth, 82)
+      context.direction = 'rtl'
+      context.textAlign = 'center'
+      context.fillStyle = index === 2 ? '#007d79' : '#ffffff'
+      context.font = '18px Arial, sans-serif'
+      context.fillText(card.label, x + cardWidth / 2, summaryTop + 26)
+      context.font = 'bold 24px Arial, sans-serif'
+      context.fillText(card.value, x + cardWidth / 2, summaryTop + 59)
+    })
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result)
+        else reject(new Error('Failed to create invoice image'))
+      }, 'image/png')
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}.png`
+    document.body.append(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    showToast('تم تصدير الفاتورة كصورة بنجاح.')
+  } catch (error) {
+    console.error('Failed to export invoice image:', error)
+    showToast('تعذر تصدير الفاتورة كصورة. حاول مجددًا.')
   } finally {
     button.disabled = false
   }
