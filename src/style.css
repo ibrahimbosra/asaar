@@ -582,9 +582,8 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-summary .invoice-summary-total strong { color: var(--teal); direction: ltr; }
 .invoice-summary .invoice-summary-total .invoice-summary-secondary { display: flex; flex-direction: row; direction: rtl; align-items: center; justify-self: center; gap: 3px; color: var(--muted); font-size: 11px; }
 .invoice-summary .invoice-summary-secondary bdi { direction: ltr; unicode-bidi: isolate; }
-.invoice-export-actions { display: grid; flex: 0 0 auto; grid-template-columns: minmax(0, 1fr) minmax(220px, 280px); align-items: center; gap: 8px; margin-top: 9px; }
-.invoice-export-actions input { width: 100%; min-height: 49px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
-.invoice-export-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.invoice-export-actions { display: grid; flex: 0 0 auto; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 9px; }
+.invoice-export-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: min(100%, 520px); justify-self: center; }
 .invoice-export { width: 100%; min-height: 49px; margin: 0; padding: 0 7px; font-size: 11px; }
 .invoice-export-syp { border: 1px solid #b5d9d4; background: #edf8f6; color: var(--teal); box-shadow: none; }
 .invoice-export-syp:disabled { opacity: .5; cursor: not-allowed; }
@@ -601,6 +600,18 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-price-editor-actions button { min-height: 44px; }
 .invoice-price-editor-close { position: absolute; top: 16px; left: 16px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: #f3f6f7; color: var(--muted); }
 .invoice-price-editor-close svg { width: 17px; }
+.invoice-customer-export-backdrop { position: fixed; inset: 0; z-index: 51; display: grid; place-items: center; padding: 16px; background: #14233388; backdrop-filter: blur(4px); }
+.invoice-customer-export-dialog { position: relative; box-sizing: border-box; width: min(100%, 420px); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--line); border-radius: 18px; background: #fff; padding: 24px 20px 20px; box-shadow: 0 18px 55px #20304440; }
+.invoice-customer-export-dialog h3 { margin: 0 35px 20px 0; color: var(--ink); font-size: 19px; }
+.invoice-customer-export-dialog > label { display: block; margin-bottom: 7px; color: var(--ink); font-size: 13px; font-weight: 800; }
+.invoice-customer-export-dialog > label span,
+.invoice-customer-export-dialog > p { color: var(--muted); font-size: 11px; font-weight: 500; }
+.invoice-customer-export-dialog input { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; }
+.invoice-customer-export-dialog > p { margin: 10px 0 0; }
+.invoice-customer-export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+.invoice-customer-export-actions button { min-height: 44px; }
+.invoice-customer-export-close { position: absolute; top: 16px; left: 16px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: #f3f6f7; color: var(--muted); }
+.invoice-customer-export-close svg { width: 17px; }
 .secondary-button, .danger-button { min-height: 46px; border-radius: 11px; font-weight: 800; }
 .secondary-button { background: #eef2f3; color: var(--ink); }
 .danger-button { background: #fff0ed; color: var(--coral); }
@@ -739,6 +750,11 @@ body.dark-mode .invoice-price-editor input { border-color: #2b3b49; background: 
 body.dark-mode .invoice-price-editor input:disabled { background: #202d37; }
 body.dark-mode .invoice-price-editor-note { background: rgba(0, 125, 121, .16); color: #aab8c5; }
 body.dark-mode .invoice-price-editor-close { background: #253441; color: #aab8c5; }
+body.dark-mode .invoice-customer-export-dialog { border-color: #2b3b49; background: #18232d; }
+body.dark-mode .invoice-customer-export-dialog h3,
+body.dark-mode .invoice-customer-export-dialog > label { color: #e6edf3; }
+body.dark-mode .invoice-customer-export-dialog input { border-color: #2b3b49; background: #111b24; color: #e6edf3; }
+body.dark-mode .invoice-customer-export-close { background: #253441; color: #aab8c5; }
 body.dark-mode .invoice-summary div { background: #202d37; }
 body.dark-mode .invoice-summary .invoice-summary-total { background: #193b3a; }
 body.dark-mode .search-box,

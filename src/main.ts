@@ -410,7 +410,7 @@ function cancelSessionImageUploads() {
 function closeSessionInterfaces() {
   cancelSessionImageUploads()
   window.dispatchEvent(new Event('asaar:session-invalidated'))
-  document.querySelectorAll<HTMLElement>('.modal-backdrop, .invoice-price-editor-backdrop, .image-help-backdrop, .image-viewer-backdrop, #app-toast').forEach((element) => element.remove())
+  document.querySelectorAll<HTMLElement>('.modal-backdrop, .invoice-price-editor-backdrop, .invoice-customer-export-backdrop, .image-help-backdrop, .image-viewer-backdrop, #app-toast').forEach((element) => element.remove())
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = undefined
 }
@@ -1560,7 +1560,6 @@ function renderInvoiceModal() {
       <div class="invoice-product-list" id="invoice-product-list"></div>
       <div class="invoice-summary" id="invoice-summary"></div>
       <div class="invoice-export-actions">
-        <input id="invoice-customer-name" type="text" maxlength="80" placeholder="اسم الزبون (اختياري)" autocomplete="name">
         <div class="invoice-export-buttons">
           <button class="primary-button invoice-export" id="export-invoice-usd" type="button">تصدير بالدولار</button>
           <button class="primary-button invoice-export invoice-export-syp" id="export-invoice-syp" type="button" ${settings.syriaEnabled && settings.exchangeRate > 0 ? '' : 'disabled'}>تصدير بالليرة</button>
@@ -1573,7 +1572,6 @@ function renderInvoiceModal() {
   const summary = element.querySelector<HTMLElement>('#invoice-summary')!
   const exportUsdButton = element.querySelector<HTMLButtonElement>('#export-invoice-usd')!
   const exportSypButton = element.querySelector<HTMLButtonElement>('#export-invoice-syp')!
-  const customerNameInput = element.querySelector<HTMLInputElement>('#invoice-customer-name')!
   const closeButton = element.querySelector<HTMLButtonElement>('.invoice-close')!
 
   closeButton.addEventListener('click', () => element.remove())
@@ -1769,6 +1767,51 @@ function renderInvoiceModal() {
     document.body.append(editor)
     usdInput.focus()
   }
+  const openCustomerExportDialog = (button: HTMLButtonElement, currency: 'usd' | 'syp') => {
+    if (!quantities.size) {
+      showToast('اختر صنفًا واحدًا على الأقل.')
+      return
+    }
+    const invoiceType = activeType
+    const backdrop = document.createElement('div')
+    backdrop.className = 'invoice-customer-export-backdrop'
+    backdrop.innerHTML = `
+      <section class="invoice-customer-export-dialog" role="dialog" aria-modal="true" aria-labelledby="invoice-customer-export-title">
+        <button type="button" class="invoice-customer-export-close" aria-label="إغلاق">${svg('close')}</button>
+        <h3 id="invoice-customer-export-title">تصدير الفاتورة</h3>
+        <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span></label>
+        <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="أدخل اسم الزبون إن رغبت" autocomplete="name">
+        <p>سيتم تصدير الفاتورة ${currency === 'syp' ? 'بالليرة السورية' : 'بالدولار'}.</p>
+        <div class="invoice-customer-export-actions">
+          <button type="button" class="secondary-button invoice-customer-export-cancel">إلغاء</button>
+          <button type="button" class="primary-button invoice-customer-export-confirm">تأكيد التصدير</button>
+        </div>
+      </section>
+    `
+    const nameInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-name')!
+    const closeDialog = () => {
+      document.removeEventListener('keydown', handleDialogKeydown)
+      window.removeEventListener('asaar:session-invalidated', closeDialog)
+      backdrop.remove()
+    }
+    const handleDialogKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDialog()
+    }
+    backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-close')!.addEventListener('click', closeDialog)
+    backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-cancel')!.addEventListener('click', closeDialog)
+    backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-confirm')!.addEventListener('click', () => {
+      const customerName = nameInput.value.trim()
+      closeDialog()
+      void exportInvoiceToExcel(button, invoiceType, quantities, priceOverrides, customerName, currency)
+    })
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) closeDialog()
+    })
+    document.addEventListener('keydown', handleDialogKeydown)
+    window.addEventListener('asaar:session-invalidated', closeDialog, { once: true })
+    document.body.append(backdrop)
+    nameInput.focus()
+  }
   element.querySelectorAll<HTMLButtonElement>('[data-invoice-type]').forEach((button) => {
     button.addEventListener('click', () => {
       activeType = button.dataset.invoiceType === 'retail' ? 'retail' : 'wholesale'
@@ -1782,14 +1825,14 @@ function renderInvoiceModal() {
   })
   searchInput.addEventListener('input', update)
   exportUsdButton.addEventListener('click', () => {
-    void exportInvoiceToExcel(exportUsdButton, activeType, quantities, priceOverrides, customerNameInput.value.trim(), 'usd')
+    openCustomerExportDialog(exportUsdButton, 'usd')
   })
   exportSypButton.addEventListener('click', () => {
     if (!settings.syriaEnabled || settings.exchangeRate <= 0) {
       showToast('فعّل الليرة وأدخل سعر الصرف من الإعدادات أولًا.')
       return
     }
-    void exportInvoiceToExcel(exportSypButton, activeType, quantities, priceOverrides, customerNameInput.value.trim(), 'syp')
+    openCustomerExportDialog(exportSypButton, 'syp')
   })
   update()
 }
