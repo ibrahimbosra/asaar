@@ -1912,6 +1912,7 @@ async function exportInvoiceToExcel(
     const isoUtcPlusThree = nowUtcPlusThree.toISOString()
     const dateValue = isoUtcPlusThree.slice(0, 10).replaceAll('-', '/')
     const timeValue = isoUtcPlusThree.slice(11, 16)
+    const fileTimeValue = isoUtcPlusThree.slice(11, 23).replaceAll(':', '-').replace('.', '-')
     const titleRow = worksheet.addRow(['المسالمة للدراجات النارية وقطع الغيار'])
     worksheet.mergeCells(`A${titleRow.number}:E${titleRow.number}`)
     const customerText = customerName || '                                       '
@@ -1965,7 +1966,7 @@ async function exportInvoiceToExcel(
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}.xlsx`
+    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}.xlsx`
     document.body.append(link)
     link.click()
     link.remove()
@@ -2050,6 +2051,7 @@ async function exportInvoiceToImage(
     const isoUtcPlusThree = nowUtcPlusThree.toISOString()
     const dateValue = isoUtcPlusThree.slice(0, 10).replaceAll('-', '/')
     const timeValue = isoUtcPlusThree.slice(11, 16)
+    const fileTimeValue = isoUtcPlusThree.slice(11, 23).replaceAll(':', '-').replace('.', '-')
     context.fillStyle = '#203044'
     context.font = '20px Arial, sans-serif'
     context.fillText(`الزبون: ${customerName || '—'}    المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, width / 2, 125)
@@ -2143,7 +2145,7 @@ async function exportInvoiceToImage(
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}.png`
+    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}.png`
     document.body.append(link)
     link.click()
     link.remove()
