@@ -1654,7 +1654,11 @@ function renderInvoiceModal() {
             <div class="invoice-product-price-values">${unpriced ? '<span class="invoice-product-price">غير مسعر</span>' : `<span class="invoice-product-price">${money(price)}$</span>${secondaryPrice}`}</div>
             <button type="button" class="invoice-price-edit" data-invoice-price-edit="${product.id}" aria-label="تعديل سعر ${escapeHtml(product.name)}" title="تعديل سعر الفاتورة">${svg('edit')}</button>
           </div>
-          <input class="invoice-quantity" type="number" min="1" step="1" inputmode="numeric" data-invoice-quantity="${product.id}" value="${quantity || 1}" ${quantity ? '' : 'disabled'} aria-label="كمية ${escapeHtml(product.name)}">
+          <div class="invoice-quantity-controls" dir="ltr">
+            <button type="button" class="invoice-quantity-step" data-invoice-quantity-step="down" aria-label="إنقاص كمية ${escapeHtml(product.name)}" ${quantity > 1 ? '' : 'disabled'}>${svg('arrowDown')}</button>
+            <input class="invoice-quantity" type="number" min="1" step="1" inputmode="numeric" data-invoice-quantity="${product.id}" value="${quantity || 1}" ${quantity ? '' : 'disabled'} aria-label="كمية ${escapeHtml(product.name)}">
+            <button type="button" class="invoice-quantity-step" data-invoice-quantity-step="up" aria-label="زيادة كمية ${escapeHtml(product.name)}" ${quantity ? '' : 'disabled'}>${svg('arrowUp')}</button>
+          </div>
           ${selectedNumber ? `<span class="invoice-product-number">${selectedNumber}</span>` : ''}
         </div>
       `
@@ -1678,10 +1682,15 @@ function renderInvoiceModal() {
       })
     })
     list.querySelectorAll<HTMLInputElement>('input[data-invoice-quantity]').forEach((quantityInput) => {
+      const updateDecreaseButton = (quantity: number) => {
+        const decreaseButton = quantityInput.closest('.invoice-quantity-controls')?.querySelector<HTMLButtonElement>('[data-invoice-quantity-step="down"]')
+        if (decreaseButton) decreaseButton.disabled = quantity <= 1
+      }
       quantityInput.addEventListener('input', () => {
         const id = quantityInput.dataset.invoiceQuantity!
         const quantity = Math.max(1, Math.floor(Number(quantityInput.value) || 1))
         quantities.set(id, quantity)
+        updateDecreaseButton(quantity)
         updateSummary()
       })
       quantityInput.addEventListener('blur', () => {
@@ -1689,6 +1698,23 @@ function renderInvoiceModal() {
         const quantity = Math.max(1, Math.floor(Number(quantityInput.value) || 1))
         quantityInput.value = String(quantity)
         quantities.set(id, quantity)
+        updateDecreaseButton(quantity)
+        updateSummary()
+      })
+    })
+    list.querySelectorAll<HTMLButtonElement>('[data-invoice-quantity-step]').forEach((stepButton) => {
+      stepButton.addEventListener('click', () => {
+        const controls = stepButton.closest('.invoice-quantity-controls')
+        const quantityInput = controls?.querySelector<HTMLInputElement>('input[data-invoice-quantity]')
+        const id = quantityInput?.dataset.invoiceQuantity
+        if (!quantityInput || quantityInput.disabled || !id) return
+        const currentQuantity = Math.max(1, Math.floor(Number(quantityInput.value) || 1))
+        const adjustment = stepButton.dataset.invoiceQuantityStep === 'up' ? 1 : -1
+        const quantity = Math.max(1, currentQuantity + adjustment)
+        quantityInput.value = String(quantity)
+        quantities.set(id, quantity)
+        const decreaseButton = controls?.querySelector<HTMLButtonElement>('[data-invoice-quantity-step="down"]')
+        if (decreaseButton) decreaseButton.disabled = quantity <= 1
         updateSummary()
       })
     })
