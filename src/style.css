@@ -667,8 +667,6 @@ body.dark-mode .percentage-input-unit, body.dark-mode .percentage-label-unit { c
 .account .text-button { flex: 0 0 auto; min-height: 42px; padding: 0 14px; border: 1px solid rgba(231, 111, 81, .22); border-radius: 11px; background: #fff0ed; color: var(--coral); font-size: 12px; font-weight: 800; white-space: nowrap; }
 .account-actions { display: flex; flex-direction: column; gap: 8px; }
 .account-actions button { width: 100%; }
-.account-actions #export-products { border-color: var(--teal); background: var(--teal); color: #fff; box-shadow: 0 7px 14px #007d7925; }
-.account-actions #export-products:active { background: var(--teal-dark); }
 .settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -5px 0 20px; padding-bottom: 8px; }
 .settings-tabs button { flex: 1; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 8px 3px; font-size: 12px; font-weight: 800; }
 .settings-tabs button.active { border-color: var(--teal); color: var(--teal); }
@@ -687,7 +685,18 @@ body.dark-mode .percentage-input-unit, body.dark-mode .percentage-label-unit { c
 .backup-summary dd { margin: 0; color: var(--ink); font-weight: 800; }
 .backup-summary > p, .backup-plan > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .backup-plan.is-destructive { border-color: #e8c1b6; background: #fffaf8; }
-.backup-plan .backup-warning { border-right: 3px solid var(--coral); padding-right: 9px; color: #a64c38; }
+.backup-plan .backup-warning, .backup-excel-export .backup-warning { border-right: 3px solid var(--coral); padding-right: 9px; color: #a64c38; }
+.backup-excel-export > button { width: 100%; }
+.backup-auto-settings { display: grid; gap: 9px; border-top: 1px solid var(--line); padding-top: 12px; }
+.backup-auto-toggle { display: flex; align-items: center; gap: 8px; }
+.backup-auto-toggle input { width: 18px; height: 18px; flex: 0 0 18px; margin: 0; padding: 0; accent-color: var(--teal); }
+.backup-auto-frequency select { width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); padding: 8px 10px; font: inherit; font-size: 12px; }
+.backup-auto-frequency select:disabled { background: #f3f6f7; color: var(--muted); }
+.backup-auto-status, .backup-auto-note, .backup-auto-reminder p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.backup-auto-status.is-error { color: var(--coral); }
+.backup-auto-reminder { display: grid; gap: 8px; border: 1px solid #e8c1b6; border-radius: 10px; background: #fffaf8; padding: 10px; }
+.backup-auto-reminder[hidden] { display: none; }
+.backup-auto-reminder button { min-height: 40px; }
 .backup-confirm { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 12px; line-height: 1.6; }
 .backup-confirm input { width: 18px; min-height: 18px; flex: 0 0 18px; margin: 2px 0 0; padding: 0; accent-color: var(--teal); }
 .backup-progress { display: grid; grid-template-columns: minmax(0, 1fr) 42px; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; direction: ltr; }
@@ -760,6 +769,8 @@ body.dark-mode .bulk-product-row.is-table-duplicate td { background: #382f1d; }
 body.dark-mode .bulk-name-error.is-saved-duplicate { background: #482a2c; color: #ffaaa1; }
 body.dark-mode .bulk-name-error.is-table-duplicate { background: #493d20; color: #ffe080; }
 @media (max-width: 480px) {
+  .settings-tabs { gap: 2px; }
+  .settings-tabs button { min-width: 0; padding: 6px 1px; font-size: 10px; white-space: nowrap; }
   .invoice-product-name { font-size: 9px; }
   .modal:has(.invoice-modal) { padding: 16px 10px 10px; }
   .invoice-product-list { padding-right: 16px; padding-left: 8px; }
@@ -876,8 +887,14 @@ body.dark-mode .backup-summary h3, body.dark-mode .backup-plan h3, body.dark-mod
 body.dark-mode .backup-summary dl > div { background: #202d37; }
 body.dark-mode .backup-summary dd { color: #e6edf3; }
 body.dark-mode .backup-summary > p, body.dark-mode .backup-plan > p { color: #aab8c5; }
+body.dark-mode .backup-auto-settings { border-color: #2b3b49; }
+body.dark-mode .backup-auto-frequency select { border-color: #2b3b49; background: #18232d; color: #e6edf3; }
+body.dark-mode .backup-auto-frequency select:disabled { background: #202d37; color: #aab8c5; }
+body.dark-mode .backup-auto-reminder { border-color: #75463e; background: #251d20; }
+body.dark-mode .backup-auto-status, body.dark-mode .backup-auto-note, body.dark-mode .backup-auto-reminder p { color: #aab8c5; }
+body.dark-mode .backup-auto-status.is-error { color: #ffb4a9; }
 body.dark-mode .backup-plan.is-destructive { border-color: #75463e; background: #251d20; }
-body.dark-mode .backup-plan .backup-warning { color: #ffb4a9; }
+body.dark-mode .backup-plan .backup-warning, body.dark-mode .backup-excel-export .backup-warning { color: #ffb4a9; }
 body.dark-mode .backup-success { background: #193b3a; color: #7de0d3; }
 body.dark-mode .favorite-button { color: #71808b; }
 body.dark-mode .favorite-button:hover,

@@ -15,6 +15,8 @@ type InvoiceType = 'wholesale' | 'retail'
 type InvoicePriceOverride = { usd: number; syp: number | null }
 type Category = { id: string; name: string }
 type Settings = BackupSettings
+type AutoBackupFrequency = 'daily' | 'weekly' | 'monthly'
+type AutoBackupPreference = { enabled: boolean; frequency: AutoBackupFrequency; lastBackupAt: string | null }
 type CloudinarySettings = { cloudName: string; uploadPreset: string }
 const compressedProductImageBrand: unique symbol = Symbol('compressed-product-image')
 type CompressedProductImage = { file: File; [compressedProductImageBrand]: true }
@@ -89,6 +91,71 @@ const arabicSort = naturalSort
 const sortedCategories = () => categories.sort(naturalSort)
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
 const settingsKey = (dataUserId: string) => `asaar-settings-${dataUserId}`
+const autoBackupKey = (authUid: string) => `asaar-auto-backup-${authUid}`
+let lastAutoBackupReminderKey = ''
+let lastAutoBackupReminderErrorUid = ''
+
+function defaultAutoBackupPreference(): AutoBackupPreference {
+  return { enabled: false, frequency: 'weekly', lastBackupAt: null }
+}
+
+function loadAutoBackupPreference(authUid: string): AutoBackupPreference {
+  const cached = localStorage.getItem(autoBackupKey(authUid))
+  if (!cached) return defaultAutoBackupPreference()
+  let value: unknown
+  try {
+    value = JSON.parse(cached)
+  } catch {
+    throw new Error('تعذر قراءة تفضيلات النسخ التلقائي المحفوظة.')
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('تفضيلات النسخ التلقائي المحفوظة غير صالحة.')
+  }
+  const preference = value as Partial<AutoBackupPreference>
+  if (typeof preference.enabled !== 'boolean'
+    || !['daily', 'weekly', 'monthly'].includes(String(preference.frequency))
+    || (preference.lastBackupAt !== null
+      && (typeof preference.lastBackupAt !== 'string' || !Number.isFinite(Date.parse(preference.lastBackupAt))))) {
+    throw new Error('تفضيلات النسخ التلقائي المحفوظة غير صالحة.')
+  }
+  return {
+    enabled: preference.enabled,
+    frequency: preference.frequency as AutoBackupFrequency,
+    lastBackupAt: preference.lastBackupAt,
+  }
+}
+
+function saveAutoBackupPreference(authUid: string, preference: AutoBackupPreference) {
+  const key = autoBackupKey(authUid)
+  const serialized = JSON.stringify(preference)
+  localStorage.setItem(key, serialized)
+  if (localStorage.getItem(key) !== serialized) {
+    throw new Error('تعذر التحقق من حفظ تفضيلات النسخ التلقائي.')
+  }
+}
+
+function nextAutoBackupAt(preference: AutoBackupPreference): Date | null {
+  if (!preference.lastBackupAt) return null
+  const next = new Date(preference.lastBackupAt)
+  if (preference.frequency === 'daily') {
+    next.setDate(next.getDate() + 1)
+  } else if (preference.frequency === 'weekly') {
+    next.setDate(next.getDate() + 7)
+  } else {
+    const day = next.getDate()
+    next.setDate(1)
+    next.setMonth(next.getMonth() + 1)
+    const lastDayOfMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()
+    next.setDate(Math.min(day, lastDayOfMonth))
+  }
+  return next
+}
+
+function isAutoBackupDue(preference: AutoBackupPreference, now = Date.now()) {
+  if (!preference.enabled) return false
+  const next = nextAutoBackupAt(preference)
+  return !next || now >= next.getTime()
+}
 
 function resolveDataUserId(user: User): string {
   const email = user.email?.trim().toLowerCase() ?? ''
@@ -465,6 +532,33 @@ function showToast(message: string) {
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => toast?.classList.remove('is-visible'), 3000)
 }
+function notifyAutoBackupDue(authUid: string) {
+  if (document.hidden) return
+  try {
+    const preference = loadAutoBackupPreference(authUid)
+    lastAutoBackupReminderErrorUid = ''
+    if (!isAutoBackupDue(preference)) {
+      if (lastAutoBackupReminderKey.startsWith(`${authUid}:`)) lastAutoBackupReminderKey = ''
+      return
+    }
+    const next = nextAutoBackupAt(preference)
+    const reminderKey = `${authUid}:${next?.toISOString() ?? 'first-backup'}`
+    if (lastAutoBackupReminderKey === reminderKey) return
+    lastAutoBackupReminderKey = reminderKey
+    showToast('حان موعد النسخة الاحتياطية الرئيسية. افتح الإعدادات لتنزيلها.')
+  } catch (error) {
+    if (lastAutoBackupReminderErrorUid !== authUid) {
+      lastAutoBackupReminderErrorUid = authUid
+      console.error('Failed to check the scheduled backup reminder:', error)
+    }
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && currentUser) notifyAutoBackupDue(currentUser.uid)
+})
+window.setInterval(() => {
+  if (currentUser && !document.hidden) notifyAutoBackupDue(currentUser.uid)
+}, 60_000)
 document.addEventListener('invalid', (event) => {
   const input = event.target
   if (!(input instanceof HTMLInputElement) || input.form?.id !== 'category-form') return
@@ -1463,7 +1557,6 @@ function renderSettingsNew() {
       <div class="account">
         <span>${escapeHtml(currentUser?.email || '')}</span>
         <div class="account-actions">
-          <button class="text-button" id="export-products" type="button">تنزيل بياناتك</button>
           <button class="text-button" id="logout" type="button">تسجيل الخروج</button>
         </div>
       </div>
@@ -1471,9 +1564,6 @@ function renderSettingsNew() {
     const darkModeToggle = content.querySelector<HTMLInputElement>('#dark-mode-toggle')!
     const favoritesToggle = content.querySelector<HTMLInputElement>('#favorites-toggle')!
     bindCloudinarySettingsPanel(content)
-    content.querySelector<HTMLButtonElement>('#export-products')!.addEventListener('click', (event) => {
-      void exportProductsToExcel(event.currentTarget as HTMLButtonElement)
-    })
     darkModeToggle.addEventListener('change', async () => {
       settings = { ...settings, darkMode: darkModeToggle.checked }
       applyTheme(settings.darkMode)
@@ -1510,26 +1600,71 @@ function renderBackupSettings(content: HTMLElement) {
   let backup: ValidatedBackup | null = null
   let plan: RestorePlan | null = null
   let restoreComplete = false
+  let autoPreference = defaultAutoBackupPreference()
+  let autoPreferenceError = ''
+  try {
+    autoPreference = loadAutoBackupPreference(user.uid)
+  } catch (error) {
+    autoPreferenceError = error instanceof Error ? error.message : 'تعذر قراءة تفضيلات النسخ التلقائي.'
+  }
   content.innerHTML = `
     <section class="backup-panel">
       <h2>النسخ الاحتياطي واستعادة البيانات</h2>
-      <p class="backup-description">احفظ بياناتك في ملف ZIP على جهازك، ثم استعدها إلى مساحة بيانات الحساب الحالي. لا تُرفع النسخة إلى أي خدمة.</p>
-      <div class="backup-actions">
-        <button class="primary-button" id="create-user-backup" type="button">إنشاء نسخة احتياطية</button>
-        <button class="secondary-button" id="choose-user-backup" type="button">استيراد نسخة احتياطية</button>
-        <input id="user-backup-file" type="file" accept=".zip,application/zip" hidden>
+      <div class="backup-summary backup-main-card">
+        <h3>النسخة الاحتياطية الرئيسية</h3>
+        <p>انسخ جميع بيانات حسابك واحفظها كملف على جهازك، لاستعادتها إذا فقدت الوصول إلى حسابك أو حدث أي خلل، أو لتصديرها إلى حساب آخر. لا تُرفع النسخة إلى أي خدمة.</p>
+        <div class="backup-actions">
+          <button class="primary-button" id="create-user-backup" type="button">إنشاء نسخة احتياطية</button>
+          <button class="secondary-button" id="choose-user-backup" type="button">استيراد نسخة احتياطية</button>
+          <input id="user-backup-file" type="file" accept=".zip,application/zip" hidden>
+        </div>
+        <p>تشمل المنتجات والفئات والأسعار والروابط الأصلية للصور والإعدادات. لا تتضمن الصور نفسها أو كلمات المرور أو بيانات الدخول.</p>
+        <div class="backup-auto-settings">
+          <label class="backup-auto-toggle">
+            <input id="auto-backup-enabled" type="checkbox" ${autoPreference.enabled ? 'checked' : ''}>
+            <span>تفعيل تذكير النسخ التلقائي</span>
+          </label>
+          <label class="backup-auto-frequency">تكرار التذكير
+            <select id="auto-backup-frequency" ${autoPreference.enabled ? '' : 'disabled'}>
+              <option value="daily" ${autoPreference.frequency === 'daily' ? 'selected' : ''}>كل يوم</option>
+              <option value="weekly" ${autoPreference.frequency === 'weekly' ? 'selected' : ''}>كل أسبوع (مستحسن)</option>
+              <option value="monthly" ${autoPreference.frequency === 'monthly' ? 'selected' : ''}>كل شهر</option>
+            </select>
+          </label>
+          <p class="backup-auto-status" id="auto-backup-status" role="status" aria-live="polite"></p>
+          <div class="backup-auto-reminder" id="auto-backup-reminder" hidden>
+            <p>حان موعد النسخة الاحتياطية الرئيسية. ابدأ التنزيل عند الضغط على الزر.</p>
+            <button class="secondary-button" id="auto-backup-download" type="button">إنشاء النسخة الآن</button>
+          </div>
+          <p class="backup-auto-note">التذكير محلي لهذا الجهاز ويعمل عند فتح التطبيق أو العودة إليه. لن يبدأ التنزيل إلا بعد ضغطك على الزر.</p>
+        </div>
+        <p class="backup-status" id="user-backup-status" role="status" aria-live="polite"></p>
+        <div id="user-backup-preview"></div>
       </div>
-      <p class="backup-description">تشمل المنتجات والفئات والأسعار والروابط الأصلية للصور والإعدادات. لا تتضمن الصور نفسها أو كلمات المرور أو بيانات الدخول.</p>
-      <p class="backup-status" id="user-backup-status" role="status" aria-live="polite"></p>
-      <div id="user-backup-preview"></div>
+      <div class="backup-summary backup-excel-export">
+        <h3>تصدير مختصر لبرنامج Excel</h3>
+        <p>ينزّل ملف Excel يحتوي على أسماء المنتجات وأسعارها بالدولار فقط، لتتمكن من فتحه والاحتفاظ به في Excel أو تطبيقات الجداول.</p>
+        <p class="backup-warning">هذا الملف لا يشمل الفئات أو الصور أو الإعدادات، ولا يغني عن النسخة الاحتياطية الرئيسية التي تحفظ جميع بياناتك وإعداداتك.</p>
+        <button class="primary-button" id="export-products" type="button">تنزيل ملف Excel</button>
+      </div>
     </section>
   `
   const createButton = content.querySelector<HTMLButtonElement>('#create-user-backup')!
   const chooseButton = content.querySelector<HTMLButtonElement>('#choose-user-backup')!
+  const exportButton = content.querySelector<HTMLButtonElement>('#export-products')!
   const fileInput = content.querySelector<HTMLInputElement>('#user-backup-file')!
   const status = content.querySelector<HTMLElement>('#user-backup-status')!
   const preview = content.querySelector<HTMLElement>('#user-backup-preview')!
+  const autoBackupToggle = content.querySelector<HTMLInputElement>('#auto-backup-enabled')!
+  const autoBackupFrequency = content.querySelector<HTMLSelectElement>('#auto-backup-frequency')!
+  const autoBackupStatus = content.querySelector<HTMLElement>('#auto-backup-status')!
+  const autoBackupReminder = content.querySelector<HTMLElement>('#auto-backup-reminder')!
+  const autoBackupDownloadButton = content.querySelector<HTMLButtonElement>('#auto-backup-download')!
+  let creatingBackup = false
   const isCurrentSession = () => currentUser?.uid === user.uid && dataUserId === ownerId && authSessionId === sessionId
+  exportButton.addEventListener('click', (event) => {
+    void exportProductsToExcel(event.currentTarget as HTMLButtonElement)
+  })
   const setStatus = (message: string, isError = false) => {
     status.textContent = message
     status.classList.toggle('is-error', isError)
@@ -1544,6 +1679,67 @@ function renderBackupSettings(content: HTMLElement) {
     if (error instanceof Error && /[\u0600-\u06FF]/u.test(error.message)) return error.message
     return 'تعذر قراءة النسخة أو تنفيذ العملية. تحقق من الملف والاتصال ثم حاول مجددًا.'
   }
+  const setAutoBackupStatus = (message: string, isError = false) => {
+    autoBackupStatus.textContent = message
+    autoBackupStatus.classList.toggle('is-error', isError)
+  }
+  const refreshAutoBackupControls = () => {
+    autoBackupToggle.checked = autoPreference.enabled
+    autoBackupFrequency.value = autoPreference.frequency
+    autoBackupFrequency.disabled = !autoPreference.enabled
+    if (autoPreferenceError) {
+      autoBackupReminder.hidden = true
+      setAutoBackupStatus(autoPreferenceError, true)
+      return
+    }
+    if (!autoPreference.enabled) {
+      autoBackupReminder.hidden = true
+      setAutoBackupStatus('تذكير النسخ التلقائي غير مفعّل.')
+      return
+    }
+    const next = nextAutoBackupAt(autoPreference)
+    if (!next || isAutoBackupDue(autoPreference)) {
+      autoBackupReminder.hidden = false
+      setAutoBackupStatus('حان موعد النسخة الاحتياطية الرئيسية.')
+      return
+    }
+    autoBackupReminder.hidden = true
+    const nextDate = new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeStyle: 'short' }).format(next)
+    setAutoBackupStatus(`موعد التذكير القادم: ${nextDate}.`)
+  }
+  refreshAutoBackupControls()
+  autoBackupToggle.addEventListener('change', () => {
+    const next = { ...autoPreference, enabled: autoBackupToggle.checked }
+    try {
+      saveAutoBackupPreference(user.uid, next)
+      autoPreference = next
+      autoPreferenceError = ''
+      refreshAutoBackupControls()
+      notifyAutoBackupDue(user.uid)
+    } catch (error) {
+      refreshAutoBackupControls()
+      setAutoBackupStatus(friendlyBackupError(error), true)
+    }
+  })
+  autoBackupFrequency.addEventListener('change', () => {
+    const next = { ...autoPreference, frequency: autoBackupFrequency.value as AutoBackupFrequency }
+    try {
+      saveAutoBackupPreference(user.uid, next)
+      autoPreference = next
+      autoPreferenceError = ''
+      refreshAutoBackupControls()
+    } catch (error) {
+      refreshAutoBackupControls()
+      setAutoBackupStatus(friendlyBackupError(error), true)
+    }
+  })
+  const autoBackupStatusTimer = window.setInterval(() => {
+    if (!autoBackupStatus.isConnected) {
+      window.clearInterval(autoBackupStatusTimer)
+      return
+    }
+    refreshAutoBackupControls()
+  }, 60_000)
   const formatCreatedAt = (value: string) => new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   const renderPreview = () => {
     if (!backup) {
@@ -1674,10 +1870,12 @@ function renderBackupSettings(content: HTMLElement) {
     }
   }
 
-  createButton.addEventListener('click', async () => {
-    if (!isCurrentSession()) return
+  const createMainBackup = async () => {
+    if (!isCurrentSession() || creatingBackup) return
+    creatingBackup = true
     createButton.disabled = true
     chooseButton.disabled = true
+    autoBackupDownloadButton.disabled = true
     setStatus('جارٍ جمع البيانات والتحقق من العلاقات وإنشاء ملف ZIP...')
     try {
       const { createBackupArchive } = await import('./user-backup')
@@ -1691,14 +1889,32 @@ function renderBackupSettings(content: HTMLElement) {
       link.click()
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      try {
+        const nextPreference = {
+          ...loadAutoBackupPreference(user.uid),
+          lastBackupAt: new Date().toISOString(),
+        }
+        saveAutoBackupPreference(user.uid, nextPreference)
+        autoPreference = nextPreference
+        autoPreferenceError = ''
+        lastAutoBackupReminderKey = ''
+        refreshAutoBackupControls()
+      } catch (preferenceError) {
+        console.error('Failed to update the automatic backup reminder:', preferenceError)
+        setAutoBackupStatus('تم تنزيل النسخة، لكن تعذر تحديث موعد تذكير النسخ التالي.', true)
+      }
       setStatus('تم إنشاء ملف النسخة الاحتياطية وتنزيله على جهازك.')
     } catch (error) {
       setStatus(friendlyBackupError(error), true)
     } finally {
+      creatingBackup = false
       createButton.disabled = false
       chooseButton.disabled = false
+      autoBackupDownloadButton.disabled = false
     }
-  })
+  }
+  createButton.addEventListener('click', () => void createMainBackup())
+  autoBackupDownloadButton.addEventListener('click', () => void createMainBackup())
   chooseButton.addEventListener('click', () => {
     if (!backupImportActive) fileInput.click()
   })
@@ -2709,6 +2925,7 @@ async function startAuth() {
     if (!isAuthSessionCurrent(user, nextDataUserId, sessionId)) return
 
     renderProductsShell()
+    notifyAutoBackupDue(user.uid)
     const productsQuery = query(collection(db, 'users', nextDataUserId, 'products'))
     unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
       products = snapshot.docs.map((item) => parseProduct(item.id, item.data())).filter((item): item is Product => item !== null).sort(arabicSort)
