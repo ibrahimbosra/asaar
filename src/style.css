@@ -545,9 +545,10 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-product-row.is-selected { border-color: #b5d9d4; background: #edf8f6; }
 .invoice-product-row.is-selected .invoice-product-name { color: #fff; }
 .invoice-product-row.is-selected { border-color: var(--teal); background: var(--teal); }
+.invoice-product-row.is-exact-search-match { border-color: #c99a27; box-shadow: 0 0 0 2px rgba(201, 154, 39, .28), 0 8px 22px rgba(32, 48, 68, .06); }
 .invoice-product-row.is-selected .invoice-product-price { color: #fff; }
 .invoice-product-row.is-selected .invoice-product-secondary-price { color: #e5fffb; }
-.invoice-product-row.is-selected .search-highlight { background: transparent; color: #fff; padding: 0; text-decoration: underline; text-decoration-color: #ffed9e; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.invoice-product-row.is-selected .search-highlight { background: transparent; color: #fff; padding: 0; text-decoration: underline; text-decoration-color: #ffed9e; text-decoration-thickness: 2px; text-underline-offset: 5px; }
 .invoice-product-row:not(.is-unpriced) { cursor: pointer; }
 .invoice-product-row.is-unpriced { cursor: default; opacity: .82; }
 .invoice-product-row.is-unpriced .invoice-product-price { color: var(--coral); direction: rtl; }
@@ -557,7 +558,7 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-product-select:disabled { opacity: 1; cursor: default; }
 .invoice-product-number { position: absolute; top: 50%; right: -15px; z-index: 1; display: grid; width: 30px; height: 30px; transform: translateY(-50%); place-items: center; border: 2px solid var(--white); border-radius: 50%; background: var(--teal); color: #fff; font-size: 12px; font-weight: 800; line-height: 1; }
 .invoice-product-name { min-width: 0; color: var(--ink); font-size: 14px; font-weight: 800; line-height: 1.45; overflow-wrap: anywhere; }
-.invoice-product-name .search-highlight { background: transparent; color: inherit; border-radius: 0; padding: 0; text-decoration: underline; text-decoration-color: #ffed9e; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.invoice-product-name .search-highlight { background: transparent; color: inherit; border-radius: 0; padding: 0; text-decoration: underline; text-decoration-color: #ffed9e; text-decoration-thickness: 2px; text-underline-offset: 5px; }
 .invoice-product-prices { display: flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; }
 .invoice-product-price-values { display: grid; justify-items: end; gap: 2px; }
 .invoice-price-edit { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border: 1px solid #b5d9d4; border-radius: 8px; background: #edf8f6; color: var(--teal); cursor: pointer; }
@@ -816,6 +817,7 @@ body.dark-mode .invoice-product-row { border-color: #2b3b49; background: #111b24
 body.dark-mode .invoice-sort-selected { border-color: #3d7773; background: #193b3a; color: #7de0d3; }
 body.dark-mode .invoice-sort-selected[aria-pressed="true"] { background: var(--teal); color: #fff; }
 body.dark-mode .invoice-product-row.is-selected { border-color: #3d7773; background: #193b3a; }
+body.dark-mode .invoice-product-row.is-exact-search-match { border-color: #edc65b; box-shadow: 0 0 0 2px rgba(237, 198, 91, .34), 0 8px 22px rgba(0, 0, 0, .24); }
 body.dark-mode .invoice-quantity-step { border-color: #2b3b49; background: #202d37; color: #aab8c5; }
 body.dark-mode .invoice-product-row.is-selected .invoice-quantity-step { border-color: #ffffff66; background: #ffffff1a; color: #fff; }
 body.dark-mode .invoice-price-edit { border-color: #3d7773; background: #193b3a; color: #7de0d3; }

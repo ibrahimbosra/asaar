@@ -2106,12 +2106,13 @@ function renderInvoiceModal() {
       const selectedNumber = selectedNumbers.get(product.id)
       const price = unitPrice(product)
       const unpriced = price === null
+      const isExactSearchMatch = Boolean(term) && product.name.trim().toLocaleLowerCase('ar') === term
       const secondaryAmount = unitSypPrice(product)
       const secondaryPrice = secondaryAmount !== null && settings.syriaEnabled && settings.exchangeRate > 0
         ? `<span class="invoice-product-secondary-price"><bdi class="invoice-product-secondary-amount" dir="ltr">${syp(secondaryAmount)}</bdi><span class="invoice-product-secondary-currency">ل.س</span></span>`
         : ''
       return `
-        <div class="invoice-product-row ${quantity ? 'is-selected' : ''} ${unpriced ? 'is-unpriced' : ''}" data-invoice-product-row="${product.id}">
+        <div class="invoice-product-row ${quantity ? 'is-selected' : ''} ${unpriced ? 'is-unpriced' : ''} ${isExactSearchMatch ? 'is-exact-search-match' : ''}" data-invoice-product-row="${product.id}">
           <button type="button" class="invoice-product-select" aria-label="${quantity ? 'إلغاء تحديد' : 'تحديد'} ${escapeHtml(product.name)}" aria-pressed="${quantity > 0}" ${unpriced ? 'disabled' : ''}>
             <span class="invoice-product-name" title="${escapeHtml(product.name)}">${highlightProductName(product.name, term)}</span>
           </button>
