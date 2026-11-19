@@ -489,7 +489,7 @@ function cancelSessionImageUploads() {
 function closeSessionInterfaces() {
   cancelSessionImageUploads()
   window.dispatchEvent(new Event('asaar:session-invalidated'))
-  document.querySelectorAll<HTMLElement>('.modal-backdrop, .invoice-price-editor-backdrop, .invoice-customer-export-backdrop, .image-help-backdrop, .image-viewer-backdrop, .privacy-policy-dialog, #app-toast').forEach((element) => element.remove())
+  document.querySelectorAll<HTMLElement>('.modal-backdrop, .invoice-price-editor-backdrop, .invoice-customer-export-backdrop, .image-viewer-backdrop, .privacy-policy-dialog, #app-toast').forEach((element) => element.remove())
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = undefined
 }
@@ -656,7 +656,7 @@ function productDocumentData(name: string, priceInput: string, number: number, c
 }
 function productImageField(imageUrl = '') {
   return `<div class="product-image-field">
-    <div class="image-url-field-header"><label for="product-image-url">رابط صورة المنتج</label><button class="image-help-trigger" type="button" aria-label="مساعدة حول رابط صورة المنتج" title="كيف أرفع صورة وأحصل على رابطها؟">!</button></div>
+    <label class="product-image-url-label" for="product-image-url">رابط صورة المنتج</label>
     <input id="product-image-url" name="imageUrl" type="url" maxlength="2048" value="${escapeHtml(imageUrl)}" placeholder="https://..." autocomplete="url">
     <div class="product-image-upload">
       <input class="product-image-camera-input" type="file" accept="image/*" capture="environment" hidden>
@@ -1039,43 +1039,6 @@ function uploadErrorMessage(error: unknown) {
   if (message.includes('permission-denied') || message.includes('unauthenticated')) return 'تعذر قراءة إعدادات الرفع لهذا المستخدم.'
   return 'تعذر رفع الصورة إلى Cloudinary. تحقق من الإعدادات وقيود Upload Preset والاتصال، ثم حاول مجددًا.'
 }
-function showProductImageHelp(trigger: HTMLButtonElement) {
-  if (document.querySelector('.image-help-backdrop')) return
-  const isAndroidPwa = isStandalone() && /Android/i.test(navigator.userAgent)
-  const cloudinaryUrl = isAndroidPwa
-    ? 'intent://cloudinary.com/#Intent;scheme=https;package=com.android.chrome;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end'
-    : 'https://cloudinary.com/'
-  const cloudinaryTarget = isAndroidPwa ? '_self' : '_blank'
-  const backdrop = document.createElement('div')
-  backdrop.className = 'image-help-backdrop'
-  backdrop.innerHTML = `
-    <section class="image-help-dialog" role="dialog" aria-modal="true" aria-labelledby="image-help-title" dir="rtl">
-      <button class="modal-close image-help-close" type="button" aria-label="إغلاق">${svg('close')}</button>
-      <p class="eyebrow">دليل الصور</p>
-      <h2 id="image-help-title">إضافة صورة من <a class="image-help-link" href="${cloudinaryUrl}" target="${cloudinaryTarget}" rel="noopener noreferrer">Cloudinary</a></h2>
-      <ol class="image-help-steps">
-        <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7v5l3 2"/><path d="M16 3h5v5"/></svg></span><span><strong>ادخل إلى حسابك</strong><span>سجّل الدخول إلى حسابك في <a class="image-help-link" href="${cloudinaryUrl}" target="${cloudinaryTarget}" rel="noopener noreferrer">Cloudinary</a>.</span></span></li>
-        <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><path d="M12 16V9m0 0-3 3m3-3 3 3"/></svg></span><span><strong>ارفع صورة المنتج</strong><span>افتح Media Library، واختر رفع صورة من جهازك، ثم انتظر اكتمال الرفع.</span></span></li>
-        <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 12.5 5.5 15a3.5 3.5 0 0 0 5 5l4-4a3.5 3.5 0 0 0 0-5"/><path d="m16 11.5 2.5-2.5a3.5 3.5 0 0 0-5-5l-4 4a3.5 3.5 0 0 0 0 5"/><path d="m9 15 6-6"/></svg></span><span><strong>انسخ رابط الصورة المباشر</strong><span>افتح تفاصيل الصورة وانسخ <bdi dir="ltr">Secure URL</bdi>. لا تنسخ رابط صفحة لوحة التحكم.</span></span></li>
-        <li><span class="image-help-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="m4 7 8 6 8-6"/><path d="m8 16 2 2 5-5"/></svg></span><span><strong>الصق الرابط في المنتج</strong><span>عد إلى الموقع والصق الرابط في الحقل، وانتظر ظهور معاينة الصورة، ثم احفظ المنتج.</span></span></li>
-      </ol>
-      <p class="image-help-note">يبدأ الرابط عادةً بـ <code dir="ltr">https://res.cloudinary.com/</code> ويتضمن <code dir="ltr">/image/upload/</code>. يجب أن تظهر المعاينة قبل الحفظ؛ إذا فشلت، راجع الرابط وتأكد أنك نسخت رابط الصورة المباشر.</p>
-    </section>
-  `
-  const close = () => {
-    backdrop.remove()
-    document.removeEventListener('keydown', handleKeydown)
-    window.removeEventListener('asaar:session-invalidated', close)
-    if (trigger.isConnected) trigger.focus()
-  }
-  const handleKeydown = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
-  backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close() })
-  backdrop.querySelector<HTMLButtonElement>('.image-help-close')!.addEventListener('click', close)
-  window.addEventListener('asaar:session-invalidated', close, { once: true })
-  document.addEventListener('keydown', handleKeydown)
-  document.body.append(backdrop)
-  backdrop.querySelector<HTMLButtonElement>('.image-help-close')!.focus()
-}
 function bindProductImageField(container: ParentNode) {
   const input = container.querySelector<HTMLInputElement>('input[name="imageUrl"]')!
   const cameraInput = container.querySelector<HTMLInputElement>('.product-image-camera-input')!
@@ -1089,10 +1052,6 @@ function bindProductImageField(container: ParentNode) {
   const rotateButton = preview.querySelector<HTMLButtonElement>('.product-image-rotate-button')!
   const status = preview.querySelector<HTMLElement>('p')!
   const error = container.querySelector<HTMLElement>('.image-url-error')!
-  container.querySelector<HTMLButtonElement>('.image-help-trigger')!.addEventListener('click', (event) => {
-    event.preventDefault()
-    showProductImageHelp(event.currentTarget as HTMLButtonElement)
-  })
   const updatePreview = () => {
     const value = input.value.trim()
     const imageUrl = normalizeProductImageUrl(value)
@@ -2152,11 +2111,10 @@ function renderInvoiceModal() {
         ? `<span class="invoice-product-secondary-price"><bdi class="invoice-product-secondary-amount" dir="ltr">${syp(secondaryAmount)}</bdi><span class="invoice-product-secondary-currency">ل.س</span></span>`
         : ''
       return `
-        <div class="invoice-product-row ${quantity ? 'is-selected' : ''} ${unpriced ? 'is-unpriced' : ''}">
-          <label class="invoice-product-select">
-            <input type="checkbox" data-invoice-product="${product.id}" ${quantity ? 'checked' : ''} ${unpriced ? 'disabled' : ''}>
+        <div class="invoice-product-row ${quantity ? 'is-selected' : ''} ${unpriced ? 'is-unpriced' : ''}" data-invoice-product-row="${product.id}">
+          <button type="button" class="invoice-product-select" aria-label="${quantity ? 'إلغاء تحديد' : 'تحديد'} ${escapeHtml(product.name)}" aria-pressed="${quantity > 0}" ${unpriced ? 'disabled' : ''}>
             <span class="invoice-product-name" title="${escapeHtml(product.name)}">${highlightProductName(product.name, term)}</span>
-          </label>
+          </button>
           <div class="invoice-product-prices">
             <div class="invoice-product-price-values">${unpriced ? '<span class="invoice-product-price">غير مسعر</span>' : `<span class="invoice-product-price">${money(price)}$</span>${secondaryPrice}`}</div>
           </div>
@@ -2172,22 +2130,27 @@ function renderInvoiceModal() {
         </div>
       `
     }).join('') : '<p class="empty-copy">لا توجد منتجات مطابقة للبحث.</p>'
-    list.querySelectorAll<HTMLInputElement>('input[data-invoice-product]').forEach((checkbox) => {
-      checkbox.addEventListener('change', () => {
-        const id = checkbox.dataset.invoiceProduct!
-        const listScrollTop = list.scrollTop
-        const pageScrollTop = window.scrollY
-        if (checkbox.checked) {
-          quantities.set(id, 1)
-        } else {
-          quantities.delete(id)
-        }
-        update()
-        requestAnimationFrame(() => {
-          if (!element.isConnected) return
-          list.scrollTop = listScrollTop
-          window.scrollTo({ top: pageScrollTop, behavior: 'auto' })
-        })
+    const toggleProductSelection = (id: string) => {
+      const product = products.find((item) => item.id === id)
+      if (!product || unitPrice(product) === null) return
+      const listScrollTop = list.scrollTop
+      const pageScrollTop = window.scrollY
+      if (quantities.has(id)) {
+        quantities.delete(id)
+      } else {
+        quantities.set(id, 1)
+      }
+      update()
+      requestAnimationFrame(() => {
+        if (!element.isConnected) return
+        list.scrollTop = listScrollTop
+        window.scrollTo({ top: pageScrollTop, behavior: 'auto' })
+      })
+    }
+    list.querySelectorAll<HTMLDivElement>('[data-invoice-product-row]').forEach((row) => {
+      row.addEventListener('click', (event) => {
+        if (event.target instanceof Element && event.target.closest('.invoice-quantity-controls, [data-invoice-price-edit]')) return
+        toggleProductSelection(row.dataset.invoiceProductRow!)
       })
     })
     list.querySelectorAll<HTMLInputElement>('input[data-invoice-quantity]').forEach((quantityInput) => {
@@ -2391,8 +2354,8 @@ function renderInvoiceModal() {
         </div>
         <fieldset class="invoice-export-format">
           <legend>نوع التصدير</legend>
-          <label><input type="radio" name="invoice-export-format" value="excel" checked> ملف Excel</label>
-          <label><input type="radio" name="invoice-export-format" value="image"> صورة PNG</label>
+          <label><input type="radio" name="invoice-export-format" value="image" checked> صورة PNG</label>
+          <label><input type="radio" name="invoice-export-format" value="excel"> ملف Excel</label>
         </fieldset>
         <p>سيتم تصدير الفاتورة ${currency === 'syp' ? 'بالليرة السورية' : 'بالدولار'}.</p>
         <div class="invoice-customer-export-actions">
