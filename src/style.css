@@ -672,6 +672,28 @@ body.dark-mode .percentage-input-unit, body.dark-mode .percentage-label-unit { c
 .settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -5px 0 20px; padding-bottom: 8px; }
 .settings-tabs button { flex: 1; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 8px 3px; font-size: 12px; font-weight: 800; }
 .settings-tabs button.active { border-color: var(--teal); color: var(--teal); }
+.backup-panel { display: grid; gap: 12px; }
+.backup-panel h2 { margin: 0 0 2px; }
+.backup-description, .backup-status { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.backup-status { min-height: 20px; }
+.backup-status.is-error { color: var(--coral); }
+.backup-actions, .backup-mode-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.backup-actions button, .backup-mode-actions button, .backup-plan > button { min-height: 44px; padding: 8px; font-size: 12px; }
+.backup-summary, .backup-plan { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 13px; padding: 13px; }
+.backup-summary h3, .backup-plan h3 { margin: 0; color: var(--ink); font-size: 14px; }
+.backup-summary dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.backup-summary dl > div { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; border-radius: 8px; background: #f3f6f7; padding: 7px 9px; font-size: 11px; }
+.backup-summary dt { color: var(--muted); }
+.backup-summary dd { margin: 0; color: var(--ink); font-weight: 800; }
+.backup-summary > p, .backup-plan > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.backup-plan.is-destructive { border-color: #e8c1b6; background: #fffaf8; }
+.backup-plan .backup-warning { border-right: 3px solid var(--coral); padding-right: 9px; color: #a64c38; }
+.backup-confirm { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 12px; line-height: 1.6; }
+.backup-confirm input { width: 18px; min-height: 18px; flex: 0 0 18px; margin: 2px 0 0; padding: 0; accent-color: var(--teal); }
+.backup-progress { display: grid; grid-template-columns: minmax(0, 1fr) 42px; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; direction: ltr; }
+.backup-progress progress { width: 100%; height: 12px; accent-color: var(--teal); }
+.backup-progress[hidden] { display: none; }
+.backup-success { margin: 0; border-radius: 10px; background: #e4f3f0; padding: 11px; color: var(--teal-dark); font-size: 13px; font-weight: 800; line-height: 1.7; }
 .inline-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 9px; }
 .inline-form .primary-button { min-height: 44px; padding: 0 12px; font-size: 12px; }
 .category-list, .bulk-list { display: grid; gap: 8px; margin-top: 14px; max-height: 250px; overflow-y: auto; }
@@ -849,6 +871,14 @@ body.dark-mode .product-image-source-option:hover { border-color: #7de0d3; backg
 body.dark-mode .cloudinary-settings { border-color: #2b3b49; background: #111b24; }
 body.dark-mode .cloudinary-settings h3 { color: #e6edf3; }
 body.dark-mode .cloudinary-settings p, body.dark-mode .product-image-upload-status { color: #aab8c5; }
+body.dark-mode .backup-summary, body.dark-mode .backup-plan { border-color: #2b3b49; background: #111b24; }
+body.dark-mode .backup-summary h3, body.dark-mode .backup-plan h3, body.dark-mode .backup-confirm { color: #e6edf3; }
+body.dark-mode .backup-summary dl > div { background: #202d37; }
+body.dark-mode .backup-summary dd { color: #e6edf3; }
+body.dark-mode .backup-summary > p, body.dark-mode .backup-plan > p { color: #aab8c5; }
+body.dark-mode .backup-plan.is-destructive { border-color: #75463e; background: #251d20; }
+body.dark-mode .backup-plan .backup-warning { color: #ffb4a9; }
+body.dark-mode .backup-success { background: #193b3a; color: #7de0d3; }
 body.dark-mode .favorite-button { color: #71808b; }
 body.dark-mode .favorite-button:hover,
 body.dark-mode .favorite-button.is-favorite { color: #f0b83f; }
