@@ -2245,8 +2245,11 @@ function renderInvoiceModal() {
         }
         return naturalSort(left, right)
       })
+    const selectedNumberOrder = sortSelectedFirst
+      ? products.filter((product) => quantities.has(product.id)).sort(naturalSort).map((product) => product.id)
+      : [...quantities.keys()]
     const selectedNumbers = new Map<string, number>(
-      [...quantities.keys()].map((id, index): [string, number] => [id, index + 1]),
+      selectedNumberOrder.map((id, index): [string, number] => [id, index + 1]),
     )
     sortButton.setAttribute('aria-pressed', String(sortSelectedFirst))
     sortButton.querySelector('span')!.textContent = sortSelectedFirst ? 'إلغاء الترتيب' : 'ترتيب المحددة'
