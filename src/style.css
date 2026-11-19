@@ -549,7 +549,7 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-sort-selected[aria-pressed="true"] { border-color: var(--teal); background: var(--teal); color: #fff; }
 .invoice-sort-selected svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .invoice-product-list { display: grid; flex: 1 1 auto; align-content: start; gap: 7px; min-height: 120px; overflow-y: auto; overflow-anchor: none; padding: 10px 18px 8px 10px; }
-.invoice-product-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto 72px; align-items: center; gap: 8px; min-height: 48px; overflow: visible; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 7px 24px 7px 9px; }
+.invoice-product-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto 84px; align-items: center; gap: 8px; min-height: 72px; overflow: visible; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 7px 24px 7px 9px; }
 .invoice-product-row.is-selected { border-color: #b5d9d4; background: #edf8f6; }
 .invoice-product-row.is-selected .invoice-product-name { color: #fff; }
 .invoice-product-row.is-selected { border-color: var(--teal); background: var(--teal); }
@@ -577,16 +577,16 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-product-secondary-price { display: flex; flex-direction: row; direction: rtl; unicode-bidi: isolate; align-items: center; gap: 3px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .invoice-product-secondary-amount { display: inline-block; direction: ltr; unicode-bidi: isolate; }
 .invoice-product-secondary-currency { direction: rtl; unicode-bidi: isolate; }
-.invoice-quantity-controls { display: flex; width: 72px; align-items: center; justify-content: center; gap: 4px; direction: ltr; }
-.invoice-quantity-step-stack { display: flex; flex: 0 0 24px; flex-direction: column; align-items: stretch; justify-content: center; gap: 2px; }
-.invoice-quantity-step { display: grid; width: 24px; height: 16px; flex: 0 0 16px; place-items: center; border: 1px solid var(--line); border-radius: 5px; background: #f1f4f5; color: var(--teal); padding: 0; cursor: pointer; }
+.invoice-quantity-controls { display: flex; width: 84px; align-items: center; justify-content: center; gap: 4px; direction: ltr; }
+.invoice-quantity-step-stack { display: flex; flex: 0 0 36px; flex-direction: column; align-items: stretch; justify-content: center; gap: 2px; }
+.invoice-quantity-step { display: grid; width: 36px; height: 24px; flex: 0 0 24px; place-items: center; border: 1px solid var(--line); border-radius: 5px; background: #f1f4f5; color: var(--teal); padding: 0; cursor: pointer; }
 .invoice-quantity-step:hover:not(:disabled) { border-color: var(--teal); background: #e3f1ef; }
 .invoice-quantity-step:focus-visible { outline: 3px solid rgba(0, 125, 121, .35); outline-offset: 2px; }
 .invoice-quantity-step:disabled { opacity: .48; cursor: not-allowed; }
-.invoice-quantity-step svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.invoice-quantity-step svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .invoice-product-row.is-selected .invoice-quantity-step { border-color: #ffffff66; background: #ffffff1a; color: #fff; }
 .invoice-product-row.is-selected .invoice-quantity-step:hover:not(:disabled) { background: #ffffff33; }
-.invoice-quantity { box-sizing: border-box; width: 44px; min-height: 34px; appearance: textfield; border: 1px solid var(--line); border-radius: 8px; padding: 5px 2px; direction: ltr; text-align: center; }
+.invoice-quantity { box-sizing: border-box; width: 44px; min-height: 48px; appearance: textfield; border: 1px solid var(--line); border-radius: 8px; padding: 5px 2px; direction: ltr; text-align: center; }
 .invoice-quantity::-webkit-inner-spin-button,
 .invoice-quantity::-webkit-outer-spin-button { margin: 0; appearance: none; }
 .invoice-quantity:disabled { background: #f3f5f6; color: #9aa6ad; }
@@ -735,7 +735,7 @@ body.dark-mode .bulk-name-error.is-table-duplicate { background: #493d20; color:
   .invoice-product-name { font-size: 9px; }
   .modal:has(.invoice-modal) { padding: 16px 10px 10px; }
   .invoice-product-list { padding-right: 16px; padding-left: 8px; }
-  .invoice-product-row { grid-template-columns: minmax(0, 1fr) auto 72px; gap: 4px; padding: 5px 16px 5px 3px; }
+  .invoice-product-row { grid-template-columns: minmax(0, 1fr) auto 84px; gap: 4px; padding: 5px 16px 5px 3px; }
   .invoice-product-select { gap: 4px; }
   .invoice-product-select input[type="checkbox"] { width: 16px; height: 16px; flex-basis: 16px; }
   .invoice-product-prices { gap: 3px; margin-left: 4px; }
@@ -745,11 +745,11 @@ body.dark-mode .bulk-name-error.is-table-duplicate { background: #493d20; color:
   .invoice-price-edit svg { width: 12px; height: 12px; }
   .invoice-price-edit-corner { top: -7px; left: -8px; width: 18px; height: 18px; flex-basis: 18px; border-radius: 50%; }
   .invoice-price-edit-corner svg { width: 10px; height: 10px; }
-  .invoice-quantity-controls { width: 72px; gap: 6px; }
-  .invoice-quantity-step-stack { flex-basis: 26px; }
-  .invoice-quantity-step { width: 26px; height: 18px; flex-basis: 18px; border-radius: 5px; }
-  .invoice-quantity-step svg { width: 12px; height: 12px; }
-  .invoice-quantity { width: 34px; min-height: 32px; font-size: 11px; }
+  .invoice-quantity-controls { width: 84px; gap: 6px; }
+  .invoice-quantity-step-stack { flex-basis: 36px; }
+  .invoice-quantity-step { width: 36px; height: 27px; flex-basis: 27px; border-radius: 6px; }
+  .invoice-quantity-step svg { width: 15px; height: 15px; }
+  .invoice-quantity { width: 36px; min-height: 48px; font-size: 11px; }
   .modal:has(.bulk-product-form) { width: calc(100% - 24px); height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); padding: 16px 10px 10px; }
   .bulk-product-form h2 { margin-bottom: 8px; font-size: 16px; }
   .add-mode-tabs { margin-bottom: 9px; }
