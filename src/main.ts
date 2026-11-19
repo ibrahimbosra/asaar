@@ -1548,6 +1548,7 @@ function renderInvoiceModal() {
   const quantities = new Map<string, number>()
   const priceOverrides = new Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>()
   let activeType: InvoiceType = 'wholesale'
+  let sortSelectedFirst = false
   const element = modal(`
     <button class="modal-close invoice-close" aria-label="إغلاق">${svg('close')}</button>
     <div class="invoice-modal">
@@ -1556,7 +1557,10 @@ function renderInvoiceModal() {
         <button type="button" data-invoice-type="wholesale" class="active" role="tab" aria-selected="true">جملة</button>
         <button type="button" data-invoice-type="retail" role="tab" aria-selected="false">مفرق</button>
       </div>
-      <div class="invoice-search search-box">${svg('search')}<input id="invoice-search" type="search" placeholder="ابحث عن قطعة..." autocomplete="off"></div>
+      <div class="invoice-search-row">
+        <div class="invoice-search search-box">${svg('search')}<input id="invoice-search" type="search" placeholder="ابحث عن قطعة..." autocomplete="off"></div>
+        <button type="button" class="invoice-sort-selected" aria-pressed="false">${svg('arrowUp')}<span>ترتيب المحددة</span></button>
+      </div>
       <div class="invoice-product-list" id="invoice-product-list"></div>
       <div class="invoice-summary" id="invoice-summary"></div>
       <div class="invoice-export-actions">
@@ -1569,6 +1573,7 @@ function renderInvoiceModal() {
   `)
   const searchInput = element.querySelector<HTMLInputElement>('#invoice-search')!
   const list = element.querySelector<HTMLElement>('#invoice-product-list')!
+  const sortButton = element.querySelector<HTMLButtonElement>('.invoice-sort-selected')!
   const summary = element.querySelector<HTMLElement>('#invoice-summary')!
   const exportUsdButton = element.querySelector<HTMLButtonElement>('#export-invoice-usd')!
   const exportSypButton = element.querySelector<HTMLButtonElement>('#export-invoice-syp')!
@@ -1591,13 +1596,21 @@ function renderInvoiceModal() {
     const visible = products
       .filter((product) => product.name.toLocaleLowerCase('ar').includes(term))
       .sort((left, right) => {
-        const leftSelected = quantities.has(left.id)
-        const rightSelected = quantities.has(right.id)
-        if (leftSelected !== rightSelected) return leftSelected ? -1 : 1
+        if (sortSelectedFirst) {
+          const leftSelected = quantities.has(left.id)
+          const rightSelected = quantities.has(right.id)
+          if (leftSelected !== rightSelected) return leftSelected ? -1 : 1
+        }
         return naturalSort(left, right)
       })
+    const selectedNumbers = new Map<string, number>(
+      [...quantities.keys()].map((id, index): [string, number] => [id, index + 1]),
+    )
+    sortButton.setAttribute('aria-pressed', String(sortSelectedFirst))
+    sortButton.querySelector('span')!.textContent = sortSelectedFirst ? 'إلغاء الترتيب' : 'ترتيب المحددة'
     list.innerHTML = visible.length ? visible.map((product) => {
       const quantity = quantities.get(product.id) || 0
+      const selectedNumber = selectedNumbers.get(product.id)
       const price = unitPrice(product)
       const unpriced = price === null
       const secondaryAmount = unitSypPrice(product)
@@ -1615,6 +1628,7 @@ function renderInvoiceModal() {
             <button type="button" class="invoice-price-edit" data-invoice-price-edit="${product.id}" aria-label="تعديل سعر ${escapeHtml(product.name)}" title="تعديل سعر الفاتورة">${svg('edit')}</button>
           </div>
           <input class="invoice-quantity" type="number" min="1" step="1" inputmode="numeric" data-invoice-quantity="${product.id}" value="${quantity || 1}" ${quantity ? '' : 'disabled'} aria-label="كمية ${escapeHtml(product.name)}">
+          ${selectedNumber ? `<span class="invoice-product-number">${selectedNumber}</span>` : ''}
         </div>
       `
     }).join('') : '<p class="empty-copy">لا توجد منتجات مطابقة للبحث.</p>'
@@ -1829,6 +1843,11 @@ function renderInvoiceModal() {
       })
       update()
     })
+  })
+  sortButton.addEventListener('click', () => {
+    sortSelectedFirst = !sortSelectedFirst
+    update()
+    if (sortSelectedFirst) list.scrollTop = 0
   })
   searchInput.addEventListener('input', update)
   exportUsdButton.addEventListener('click', () => {
