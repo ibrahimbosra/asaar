@@ -1566,6 +1566,7 @@ function renderInvoiceModal() {
   const priceOverrides = new Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>()
   let activeType: InvoiceType = 'wholesale'
   let sortSelectedFirst = false
+  let exportDialogOpening = false
   let invoiceNumberPromise: Promise<string> | null = null
   const getInvoiceNumber = () => {
     if (!invoiceNumberPromise) {
@@ -1836,20 +1837,52 @@ function renderInvoiceModal() {
     document.body.append(editor)
     editor.querySelector<HTMLButtonElement>('.invoice-price-editor-close')!.focus()
   }
-  const openCustomerExportDialog = (button: HTMLButtonElement, currency: 'usd' | 'syp') => {
+  const openCustomerExportDialog = async (button: HTMLButtonElement, currency: 'usd' | 'syp') => {
+    if (exportDialogOpening) return
     if (!quantities.size) {
       showToast('اختر صنفًا واحدًا على الأقل.')
       return
     }
     const invoiceType = activeType
+    const exportQuantities = new Map(quantities)
+    const exportPriceOverrides = new Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>()
+    priceOverrides.forEach((overrides, id) => exportPriceOverrides.set(id, { ...overrides }))
+    const rows = getInvoiceExportRows(invoiceType, exportQuantities, exportPriceOverrides, currency)
+    if (!rows.length) {
+      showToast('لا توجد أصناف صالحة للتصدير.')
+      return
+    }
+    exportDialogOpening = true
+    button.disabled = true
+    let invoiceNumber: string
+    try {
+      invoiceNumber = await getInvoiceNumber()
+    } catch (error) {
+      console.error('Failed to prepare invoice export:', error)
+      showToast('تعذر تجهيز رقم الفاتورة. حاول مجددًا.')
+      return
+    } finally {
+      exportDialogOpening = false
+      button.disabled = false
+    }
+    if (!element.isConnected) return
+    const totalPieces = rows.reduce((total, row) => total + row.quantity, 0)
+    const invoiceTotal = rows.reduce((total, row) => total + row.total, 0)
+    const formattedTotal = currency === 'syp' ? `${syp(invoiceTotal)} ل.س` : `${money(invoiceTotal)} $`
     const backdrop = document.createElement('div')
     backdrop.className = 'invoice-customer-export-backdrop'
     backdrop.innerHTML = `
       <section class="invoice-customer-export-dialog" role="dialog" aria-modal="true" aria-labelledby="invoice-customer-export-title">
         <button type="button" class="invoice-customer-export-close" aria-label="إغلاق">${svg('close')}</button>
         <h3 id="invoice-customer-export-title">تصدير الفاتورة</h3>
+        <p class="invoice-export-number">فاتورة رقم <bdi dir="ltr">${invoiceNumber}</bdi></p>
         <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span></label>
         <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="أدخل اسم الزبون إن رغبت" autocomplete="name">
+        <div class="invoice-export-summary">
+          <div><span>إجمالي الفاتورة</span><strong><bdi dir="ltr">${formattedTotal}</bdi></strong></div>
+          <div><span>عدد الأصناف</span><strong>${rows.length}</strong></div>
+          <div><span>عدد القطع</span><strong>${totalPieces}</strong></div>
+        </div>
         <fieldset class="invoice-export-format">
           <legend>نوع التصدير</legend>
           <label><input type="radio" name="invoice-export-format" value="excel" checked> ملف Excel</label>
@@ -1878,7 +1911,7 @@ function renderInvoiceModal() {
       const format = backdrop.querySelector<HTMLInputElement>('input[name="invoice-export-format"]:checked')!.value
       closeDialog()
       const exportInvoice = format === 'image' ? exportInvoiceToImage : exportInvoiceToExcel
-      void exportInvoice(button, invoiceType, quantities, priceOverrides, customerName, currency, getInvoiceNumber)
+      void exportInvoice(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, currency, getInvoiceNumber)
     })
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) closeDialog()
@@ -1906,14 +1939,14 @@ function renderInvoiceModal() {
   })
   searchInput.addEventListener('input', update)
   exportUsdButton.addEventListener('click', () => {
-    openCustomerExportDialog(exportUsdButton, 'usd')
+    void openCustomerExportDialog(exportUsdButton, 'usd')
   })
   exportSypButton.addEventListener('click', () => {
     if (!settings.syriaEnabled || settings.exchangeRate <= 0) {
       showToast('فعّل الليرة وأدخل سعر الصرف من الإعدادات أولًا.')
       return
     }
-    openCustomerExportDialog(exportSypButton, 'syp')
+    void openCustomerExportDialog(exportSypButton, 'syp')
   })
   update()
 }

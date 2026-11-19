@@ -621,11 +621,17 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-price-editor-close svg { width: 17px; }
 .invoice-customer-export-backdrop { position: fixed; inset: 0; z-index: 51; display: grid; place-items: center; padding: 16px; background: #14233388; backdrop-filter: blur(4px); }
 .invoice-customer-export-dialog { position: relative; box-sizing: border-box; width: min(100%, 420px); max-height: calc(100dvh - 32px); overflow: auto; border: 1px solid var(--line); border-radius: 18px; background: #fff; padding: 24px 20px 20px; box-shadow: 0 18px 55px #20304440; }
-.invoice-customer-export-dialog h3 { margin: 0 35px 20px 0; color: var(--ink); font-size: 19px; }
+.invoice-customer-export-dialog h3 { margin: 0 35px 6px 0; color: var(--ink); font-size: 19px; }
+.invoice-customer-export-dialog > .invoice-export-number { margin: 0 0 16px; color: var(--teal); font-size: 13px; font-weight: 800; }
 .invoice-customer-export-dialog > label { display: block; margin-bottom: 7px; color: var(--ink); font-size: 13px; font-weight: 800; }
 .invoice-customer-export-dialog > label span,
 .invoice-customer-export-dialog > p { color: var(--muted); font-size: 11px; font-weight: 500; }
 .invoice-customer-export-dialog input { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; }
+.invoice-export-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.invoice-export-summary > div { display: grid; min-width: 0; align-content: center; gap: 5px; border-radius: 9px; background: #f1f4f5; padding: 9px 5px; text-align: center; }
+.invoice-export-summary span { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.invoice-export-summary strong { color: var(--ink); font-size: 12px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
+.invoice-export-summary bdi { direction: ltr; unicode-bidi: isolate; }
 .invoice-export-format { display: grid; gap: 8px; margin: 16px 0 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
 .invoice-export-format legend { padding: 0 5px; color: var(--ink); font-size: 12px; font-weight: 800; }
 .invoice-export-format label { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 700; }
@@ -798,6 +804,8 @@ body.dark-mode .invoice-price-editor-close { background: #253441; color: #aab8c5
 body.dark-mode .invoice-customer-export-dialog { border-color: #2b3b49; background: #18232d; }
 body.dark-mode .invoice-customer-export-dialog h3,
 body.dark-mode .invoice-customer-export-dialog > label { color: #e6edf3; }
+body.dark-mode .invoice-export-summary > div { background: #202d37; }
+body.dark-mode .invoice-export-summary strong { color: #e6edf3; }
 body.dark-mode .invoice-customer-export-dialog input { border-color: #2b3b49; background: #111b24; color: #e6edf3; }
 body.dark-mode .invoice-export-format { border-color: #2b3b49; }
 body.dark-mode .invoice-export-format legend,
