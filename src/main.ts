@@ -1,7 +1,7 @@
 import './style.css'
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, createUserWithEmailAndPassword, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
-import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, getFirestore, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, getFirestore, onSnapshot, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 
 const firebaseConfig = { apiKey: 'AIzaSyAnaTxPXhxMI3A-U4IucbEDfQ8hOTbix_w', authDomain: 'msalma-1d983.firebaseapp.com', projectId: 'msalma-1d983', storageBucket: 'msalma-1d983.firebasestorage.app', messagingSenderId: '1029462661783', appId: '1:1029462661783:web:61a7c2fd8336326fab27d2' }
 const app = initializeApp(firebaseConfig)
@@ -98,6 +98,23 @@ const settingsKey = (dataUserId: string) => `asaar-settings-${dataUserId}`
 function resolveDataUserId(user: User): string {
   const email = user.email?.trim().toLowerCase() ?? ''
   return sharedDataEmails.has(email) ? sharedDataUserId : user.uid
+}
+
+async function getNextInvoiceNumber(ownerId: string): Promise<string> {
+  if (!ownerId) throw new Error('Invoice owner is unavailable')
+  const ownerRef = doc(db, 'users', ownerId)
+  const nextNumber = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ownerRef)
+    const currentNumber = snapshot.get('invoiceCounter') ?? 0
+    if (typeof currentNumber !== 'number' || !Number.isSafeInteger(currentNumber) || currentNumber < 0) {
+      throw new Error('Invoice counter is invalid')
+    }
+    const next = currentNumber + 1
+    if (!Number.isSafeInteger(next)) throw new Error('Invoice counter has reached its limit')
+    transaction.set(ownerRef, { invoiceCounter: next }, { merge: true })
+    return next
+  })
+  return String(nextNumber).padStart(7, '0')
 }
 
 function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character] || character)) }
@@ -1549,6 +1566,16 @@ function renderInvoiceModal() {
   const priceOverrides = new Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>()
   let activeType: InvoiceType = 'wholesale'
   let sortSelectedFirst = false
+  let invoiceNumberPromise: Promise<string> | null = null
+  const getInvoiceNumber = () => {
+    if (!invoiceNumberPromise) {
+      invoiceNumberPromise = getNextInvoiceNumber(dataUserId).catch((error: unknown) => {
+        invoiceNumberPromise = null
+        throw error
+      })
+    }
+    return invoiceNumberPromise
+  }
   const element = modal(`
     <button class="modal-close invoice-close" aria-label="إغلاق">${svg('close')}</button>
     <div class="invoice-modal">
@@ -1823,7 +1850,7 @@ function renderInvoiceModal() {
       const format = backdrop.querySelector<HTMLInputElement>('input[name="invoice-export-format"]:checked')!.value
       closeDialog()
       const exportInvoice = format === 'image' ? exportInvoiceToImage : exportInvoiceToExcel
-      void exportInvoice(button, invoiceType, quantities, priceOverrides, customerName, currency)
+      void exportInvoice(button, invoiceType, quantities, priceOverrides, customerName, currency, getInvoiceNumber)
     })
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) closeDialog()
@@ -1898,6 +1925,7 @@ async function exportInvoiceToExcel(
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
   currency: 'usd' | 'syp',
+  getInvoiceNumber: () => Promise<string>,
 ) {
   if (!quantities.size) {
     showToast('اختر صنفًا واحدًا على الأقل.')
@@ -1914,10 +1942,11 @@ async function exportInvoiceToExcel(
       showToast('لا توجد أصناف صالحة للتصدير.')
       return
     }
+    const invoiceNumber = await getInvoiceNumber()
     const ExcelJS = await import('exceljs')
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('فاتورة', {
-      views: [{ rightToLeft: true, state: 'frozen', ySplit: 4 }],
+      views: [{ rightToLeft: true, state: 'frozen', ySplit: 5 }],
       pageSetup: { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
     })
     worksheet.columns = [
@@ -1934,6 +1963,8 @@ async function exportInvoiceToExcel(
     const fileTimeValue = isoUtcPlusThree.slice(11, 23).replaceAll(':', '-').replace('.', '-')
     const titleRow = worksheet.addRow(['المسالمة للدراجات النارية وقطع الغيار'])
     worksheet.mergeCells(`A${titleRow.number}:E${titleRow.number}`)
+    const invoiceNumberRow = worksheet.addRow([`رقم الفاتورة: ${invoiceNumber}`])
+    worksheet.mergeCells(`A${invoiceNumberRow.number}:E${invoiceNumberRow.number}`)
     const customerText = customerName || '                                       '
     const customerDateRow = worksheet.addRow([{
       richText: [
@@ -1944,7 +1975,7 @@ async function exportInvoiceToExcel(
     }])
     worksheet.mergeCells(`A${customerDateRow.number}:E${customerDateRow.number}`)
     worksheet.addRow([])
-    worksheet.addRow(['م', 'الصنف', 'الكمية', `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`])
+    const headerRow = worksheet.addRow(['م', 'الصنف', 'الكمية', `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`])
     const finalTotal = rows.reduce((total, row) => total + row.total, 0)
     rows.forEach(({ product, quantity, price, total }, index) => {
       worksheet.addRow({
@@ -1963,15 +1994,16 @@ async function exportInvoiceToExcel(
       total: finalTotal,
     })
     worksheet.eachRow((row, rowNumber) => {
-      row.height = rowNumber === 1 ? 30 : rowNumber === 2 ? 28 : rowNumber === 3 ? 24 : 24
+      const isTitle = rowNumber === titleRow.number
+      const isInvoiceNumber = rowNumber === invoiceNumberRow.number
+      const isCustomer = rowNumber === customerDateRow.number
+      const isHeader = rowNumber === headerRow.number
+      const isTotal = rowNumber === totalRow.number
+      row.height = isTitle ? 30 : isCustomer ? 28 : 24
       row.eachCell({ includeEmpty: true }, (cell) => {
-        const isTitle = rowNumber === 1
-        const isCustomer = rowNumber === 2
-        const isHeader = rowNumber === 4
-        const isTotal = rowNumber === totalRow.number
-        cell.alignment = { horizontal: isTitle || isCustomer ? 'center' : 'right', vertical: 'middle' }
+        cell.alignment = { horizontal: isTitle || isCustomer ? 'center' : isInvoiceNumber ? 'left' : 'right', vertical: 'middle' }
         if (!isCustomer) {
-          cell.font = { name: 'Arial', size: isTitle ? 16 : isHeader || isTotal ? 12 : 11, bold: isTitle || isHeader || isTotal, color: { argb: isHeader ? 'FFFFFFFF' : isTitle ? 'FF007D79' : 'FF203044' } }
+          cell.font = { name: 'Arial', size: isTitle ? 16 : isHeader || isTotal ? 12 : 11, bold: isTitle || isHeader || isTotal, color: { argb: isHeader ? 'FFFFFFFF' : isTitle ? 'FF007D79' : isInvoiceNumber ? 'FFC62828' : 'FF203044' } }
         }
         if (isTitle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7F9' } }
         if (isHeader) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
@@ -1985,7 +2017,7 @@ async function exportInvoiceToExcel(
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}.xlsx`
+    link.download = `فاتورة-${invoiceNumber}-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}.xlsx`
     document.body.append(link)
     link.click()
     link.remove()
@@ -2006,6 +2038,7 @@ async function exportInvoiceToImage(
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
   currency: 'usd' | 'syp',
+  getInvoiceNumber: () => Promise<string>,
 ) {
   if (!quantities.size) {
     showToast('اختر صنفًا واحدًا على الأقل.')
@@ -2022,6 +2055,7 @@ async function exportInvoiceToImage(
       showToast('لا توجد أصناف صالحة للتصدير.')
       return
     }
+    const invoiceNumber = await getInvoiceNumber()
     const productsPerImage = 15
     const pageCount = Math.ceil(rows.length / productsPerImage)
     const width = 1200
@@ -2045,36 +2079,40 @@ async function exportInvoiceToImage(
     const formatAmount = (value: number) => currency === 'syp' ? `${syp(value)} ل.س` : `${money(value)} $`
     const totalPieces = rows.reduce((total, row) => total + row.quantity, 0)
     const invoiceTotal = rows.reduce((total, row) => total + row.total, 0)
+    const measureCanvas = document.createElement('canvas')
+    const measureContext = measureCanvas.getContext('2d')
+    if (!measureContext) throw new Error('Canvas 2D context is unavailable')
+    measureContext.font = '22px Arial, sans-serif'
+    measureContext.direction = 'rtl'
+    const allNameLines = rows.map(({ product }) => {
+      const words = product.name.trim().split(/\s+/)
+      const lines: string[] = []
+      let line = ''
+      words.forEach((word) => {
+        const candidate = line ? `${line} ${word}` : word
+        if (line && measureContext.measureText(candidate).width > 410) {
+          lines.push(line)
+          line = word
+        } else {
+          line = candidate
+        }
+      })
+      if (line) lines.push(line)
+      return lines.length ? lines : ['']
+    })
+    const fixedRowHeight = Math.max(66, ...allNameLines.map((lines) => lines.length * 28 + 20))
+    const rowsHeight = productsPerImage * fixedRowHeight
     for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
       const pageRows = rows.slice(pageIndex * productsPerImage, (pageIndex + 1) * productsPerImage)
+      const pageNameLines = allNameLines.slice(pageIndex * productsPerImage, (pageIndex + 1) * productsPerImage)
       const canvas = document.createElement('canvas')
       const context = canvas.getContext('2d')
       if (!context) throw new Error('Canvas 2D context is unavailable')
-      context.font = '22px Arial, sans-serif'
-      context.direction = 'rtl'
-      const nameLines = pageRows.map(({ product }) => {
-        const words = product.name.trim().split(/\s+/)
-        const lines: string[] = []
-        let line = ''
-        words.forEach((word) => {
-          const candidate = line ? `${line} ${word}` : word
-          if (line && context.measureText(candidate).width > 410) {
-            lines.push(line)
-            line = word
-          } else {
-            line = candidate
-          }
-        })
-        if (line) lines.push(line)
-        return lines.length ? lines : ['']
-      })
-      const rowHeights = nameLines.map((lines) => Math.max(66, lines.length * 28 + 20))
-      const rowsHeight = rowHeights.reduce((total, height) => total + height, 0)
       const subtotalHeight = 66
       const subtotalTop = tableTop + headerHeight + rowsHeight
       const summaryTop = subtotalTop + subtotalHeight + 24
       const isLastPage = pageIndex === pageCount - 1
-      const height = isLastPage ? summaryTop + 106 : summaryTop + 24
+      const height = summaryTop + 106
       canvas.width = width
       canvas.height = height
       context.fillStyle = '#ffffff'
@@ -2096,8 +2134,19 @@ async function exportInvoiceToImage(
       context.font = 'bold 21px Arial, sans-serif'
       context.fillText(String(pageIndex + 1), rightEdge - 30, 59)
       context.direction = 'rtl'
+      context.textAlign = 'left'
+      context.fillStyle = '#c62828'
+      context.font = '18px Arial, sans-serif'
+      context.fillText(`رقم الفاتورة: ${invoiceNumber}`, margin, 66, 250)
+      if (isLastPage) {
+        context.textAlign = 'right'
+        context.fillStyle = '#203044'
+        context.font = 'bold 15px Arial, sans-serif'
+        context.fillText('الصفحة النهائية للفاتورة', rightEdge - 68, 65, 250)
+      }
       context.fillStyle = '#203044'
       context.font = '20px Arial, sans-serif'
+      context.textAlign = 'center'
       context.fillText(`الزبون: ${customerName || '—'}    المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, width / 2, 125)
       context.strokeStyle = '#d7e1e4'
       context.lineWidth = 2
@@ -2115,8 +2164,9 @@ async function exportInvoiceToImage(
         context.fillText(header.text, x, tableTop + headerHeight / 2, header.right - header.left - 20)
       })
       let rowTop = tableTop + headerHeight
-      pageRows.forEach((row, index) => {
-        const rowHeight = rowHeights[index]
+      for (let index = 0; index < productsPerImage; index += 1) {
+        const row = pageRows[index]
+        const rowHeight = fixedRowHeight
         context.fillStyle = index % 2 === 0 ? '#f5f8f9' : '#ffffff'
         context.fillRect(margin, rowTop, rightEdge - margin, rowHeight)
         context.strokeStyle = '#d7e1e4'
@@ -2125,32 +2175,34 @@ async function exportInvoiceToImage(
         context.moveTo(margin, rowTop + rowHeight)
         context.lineTo(rightEdge, rowTop + rowHeight)
         context.stroke()
-        context.fillStyle = '#203044'
-        context.font = '20px Arial, sans-serif'
-        context.textAlign = 'right'
-        context.direction = 'ltr'
-        context.fillText(formatAmount(row.total), columnEdges[1] - 14, rowTop + rowHeight / 2, columnEdges[1] - columnEdges[0] - 20)
-        context.fillText(formatAmount(row.price), columnEdges[2] - 14, rowTop + rowHeight / 2, columnEdges[2] - columnEdges[1] - 20)
-        context.textAlign = 'center'
-        context.fillText(String(row.quantity), (columnEdges[2] + columnEdges[3]) / 2, rowTop + rowHeight / 2)
-        context.direction = 'rtl'
-        context.textAlign = 'right'
-        const lines = nameLines[index]
-        const lineHeight = 28
-        const textTop = rowTop + (rowHeight - (lines.length * lineHeight)) / 2 + lineHeight / 2
-        context.save()
-        context.beginPath()
-        context.rect(columnEdges[3] + 10, rowTop, columnEdges[4] - columnEdges[3] - 20, rowHeight)
-        context.clip()
-        lines.forEach((line, lineIndex) => {
-          context.fillText(line, columnEdges[4] - 14, textTop + lineIndex * lineHeight)
-        })
-        context.restore()
+        if (row) {
+          context.fillStyle = '#203044'
+          context.font = '20px Arial, sans-serif'
+          context.textAlign = 'right'
+          context.direction = 'ltr'
+          context.fillText(formatAmount(row.total), columnEdges[1] - 14, rowTop + rowHeight / 2, columnEdges[1] - columnEdges[0] - 20)
+          context.fillText(formatAmount(row.price), columnEdges[2] - 14, rowTop + rowHeight / 2, columnEdges[2] - columnEdges[1] - 20)
+          context.textAlign = 'center'
+          context.fillText(String(row.quantity), (columnEdges[2] + columnEdges[3]) / 2, rowTop + rowHeight / 2)
+          context.direction = 'rtl'
+          context.textAlign = 'right'
+          const lines = pageNameLines[index]
+          const lineHeight = 28
+          const textTop = rowTop + (rowHeight - (lines.length * lineHeight)) / 2 + lineHeight / 2
+          context.save()
+          context.beginPath()
+          context.rect(columnEdges[3] + 10, rowTop, columnEdges[4] - columnEdges[3] - 20, rowHeight)
+          context.clip()
+          lines.forEach((line, lineIndex) => {
+            context.fillText(line, columnEdges[4] - 14, textTop + lineIndex * lineHeight)
+          })
+          context.restore()
+        }
         context.textAlign = 'center'
         context.direction = 'ltr'
         context.fillText(String(pageIndex * productsPerImage + index + 1), (columnEdges[4] + columnEdges[5]) / 2, rowTop + rowHeight / 2)
         rowTop += rowHeight
-      })
+      }
       const pageTotal = pageRows.reduce((total, row) => total + row.total, 0)
       context.fillStyle = '#e4f3f0'
       context.fillRect(margin, subtotalTop, rightEdge - margin, subtotalHeight)
@@ -2198,7 +2250,7 @@ async function exportInvoiceToImage(
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}-صفحة-${pageIndex + 1}-من-${pageCount}.png`
+      link.download = `فاتورة-${invoiceNumber}-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}-صفحة-${pageIndex + 1}-من-${pageCount}.png`
       document.body.append(link)
       link.click()
       link.remove()
