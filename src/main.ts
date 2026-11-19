@@ -2,6 +2,7 @@ import './style.css'
 import { initializeApp } from 'firebase/app'
 import { browserLocalPersistence, createUserWithEmailAndPassword, getAuth, onAuthStateChanged, setPersistence, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
 import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocFromServer, getDocs, getDocsFromServer, getFirestore, onSnapshot, query, runTransaction, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import type { BackupSettings, RestoreMode, RestorePlan, ValidatedBackup } from './user-backup'
 
 const firebaseConfig = { apiKey: 'AIzaSyAnaTxPXhxMI3A-U4IucbEDfQ8hOTbix_w', authDomain: 'msalma-1d983.firebaseapp.com', projectId: 'msalma-1d983', storageBucket: 'msalma-1d983.firebasestorage.app', messagingSenderId: '1029462661783', appId: '1:1029462661783:web:61a7c2fd8336326fab27d2' }
 const app = initializeApp(firebaseConfig)
@@ -13,14 +14,7 @@ type Product = { id: string; name: string; price: number; number: number; stored
 type InvoiceType = 'wholesale' | 'retail'
 type InvoicePriceOverride = { usd: number; syp: number | null }
 type Category = { id: string; name: string }
-type Settings = {
-  syriaEnabled: boolean
-  exchangeRate: number
-  darkMode: boolean
-  favoritesEnabled: boolean
-  retailPricesEnabled: boolean
-  retailProfitPercentage: number
-}
+type Settings = BackupSettings
 type CloudinarySettings = { cloudName: string; uploadPreset: string }
 const compressedProductImageBrand: unique symbol = Symbol('compressed-product-image')
 type CompressedProductImage = { file: File; [compressedProductImageBrand]: true }
@@ -58,6 +52,7 @@ let productDisplayLimit = productPageSize
 let selectedCategoryId = 'all'
 let favoritesFilterActive = false
 let settings: Settings = defaultSettings
+let backupImportActive = false
 let unsubscribeProducts: () => void = () => undefined
 let unsubscribeCategories: () => void = () => undefined
 let deferredInstall: BeforeInstallPromptEvent | null = null
@@ -1393,6 +1388,7 @@ function renderSettingsNew() {
       <button class="active" data-settings-tab="currency">العملة</button>
       <button data-settings-tab="categories">الفئات</button>
       <button data-settings-tab="system">النظام</button>
+      <button data-settings-tab="backup">نسخ احتياطي</button>
     </div>
     <div id="settings-content"></div>
   `)
@@ -1449,6 +1445,10 @@ function renderSettingsNew() {
       renderCategoriesTab(content)
       return
     }
+    if (tab === 'backup') {
+      renderBackupSettings(content)
+      return
+    }
     content.innerHTML = `
       <h2>النظام</h2>
       <label class="switch-row"><span>الوضع الليلي</span><input id="dark-mode-toggle" type="checkbox" ${settings.darkMode ? 'checked' : ''}><i></i></label>
@@ -1501,6 +1501,233 @@ function renderSettingsNew() {
     button.addEventListener('click', () => renderTab(button.dataset.settingsTab || 'currency'))
   })
   renderTab('currency')
+}
+function renderBackupSettings(content: HTMLElement) {
+  const user = currentUser
+  if (!user) return
+  const ownerId = dataUserId
+  const sessionId = authSessionId
+  let backup: ValidatedBackup | null = null
+  let plan: RestorePlan | null = null
+  let restoreComplete = false
+  content.innerHTML = `
+    <section class="backup-panel">
+      <h2>النسخ الاحتياطي واستعادة البيانات</h2>
+      <p class="backup-description">احفظ بياناتك في ملف ZIP على جهازك، ثم استعدها إلى مساحة بيانات الحساب الحالي. لا تُرفع النسخة إلى أي خدمة.</p>
+      <div class="backup-actions">
+        <button class="primary-button" id="create-user-backup" type="button">إنشاء نسخة احتياطية</button>
+        <button class="secondary-button" id="choose-user-backup" type="button">استيراد نسخة احتياطية</button>
+        <input id="user-backup-file" type="file" accept=".zip,application/zip" hidden>
+      </div>
+      <p class="backup-description">تشمل المنتجات والفئات والأسعار والروابط الأصلية للصور والإعدادات. لا تتضمن الصور نفسها أو كلمات المرور أو بيانات الدخول.</p>
+      <p class="backup-status" id="user-backup-status" role="status" aria-live="polite"></p>
+      <div id="user-backup-preview"></div>
+    </section>
+  `
+  const createButton = content.querySelector<HTMLButtonElement>('#create-user-backup')!
+  const chooseButton = content.querySelector<HTMLButtonElement>('#choose-user-backup')!
+  const fileInput = content.querySelector<HTMLInputElement>('#user-backup-file')!
+  const status = content.querySelector<HTMLElement>('#user-backup-status')!
+  const preview = content.querySelector<HTMLElement>('#user-backup-preview')!
+  const isCurrentSession = () => currentUser?.uid === user.uid && dataUserId === ownerId && authSessionId === sessionId
+  const setStatus = (message: string, isError = false) => {
+    status.textContent = message
+    status.classList.toggle('is-error', isError)
+  }
+  const friendlyBackupError = (error: unknown) => {
+    const code = typeof error === 'object' && error && 'code' in error ? String((error as { code: string }).code) : ''
+    if (code.includes('permission-denied')) return 'لا تملك صلاحية الوصول إلى بيانات مساحة الحساب الحالية.'
+    if (code.includes('unauthenticated')) return 'انتهت جلسة تسجيل الدخول. سجّل الدخول مجددًا.'
+    if (code.includes('unavailable') || code.includes('network') || code.includes('deadline-exceeded')) {
+      return 'تعذر الاتصال بـ Firestore. تحقق من الإنترنت وحاول مجددًا.'
+    }
+    if (error instanceof Error && /[\u0600-\u06FF]/u.test(error.message)) return error.message
+    return 'تعذر قراءة النسخة أو تنفيذ العملية. تحقق من الملف والاتصال ثم حاول مجددًا.'
+  }
+  const formatCreatedAt = (value: string) => new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  const renderPreview = () => {
+    if (!backup) {
+      preview.innerHTML = ''
+      return
+    }
+    const { manifest, payload } = backup
+    preview.innerHTML = `
+      <div class="backup-summary">
+        <h3>معلومات النسخة المحددة</h3>
+        <dl>
+          <div><dt>تاريخ الإنشاء</dt><dd>${escapeHtml(formatCreatedAt(manifest.createdAt))}</dd></div>
+          <div><dt>إصدار التنسيق</dt><dd>${manifest.formatVersion}</dd></div>
+          <div><dt>المنتجات</dt><dd>${payload.products.length}</dd></div>
+          <div><dt>الفئات</dt><dd>${payload.categories.length}</dd></div>
+          <div><dt>الإعدادات</dt><dd>${manifest.counts.settings}</dd></div>
+          <div><dt>إصدار التطبيق</dt><dd>${escapeHtml(manifest.appVersion)}</dd></div>
+        </dl>
+        <p>سيُستخدم الحساب ومساحة البيانات الحاليان، ولن يُستورد معرّف المساحة القديمة.</p>
+      </div>
+      <div class="backup-mode-actions">
+        <button class="primary-button" id="prepare-full-restore" type="button">استعادة كاملة</button>
+        <button class="secondary-button" id="prepare-merge-restore" type="button">دمج البيانات</button>
+      </div>
+      <div id="restore-plan"></div>
+    `
+    preview.querySelector<HTMLButtonElement>('#prepare-full-restore')!.addEventListener('click', () => void preparePlan('replace'))
+    preview.querySelector<HTMLButtonElement>('#prepare-merge-restore')!.addEventListener('click', () => void preparePlan('merge'))
+  }
+  const preparePlan = async (mode: RestoreMode) => {
+    if (!backup || backupImportActive) return
+    backupImportActive = true
+    const modeButtons = preview.querySelectorAll<HTMLButtonElement>('.backup-mode-actions button')
+    modeButtons.forEach((button) => { button.disabled = true })
+    setStatus('جارٍ فحص بيانات الحساب الحالي وتجهيز ملخص العملية...')
+    try {
+      const { prepareRestorePlan } = await import('./user-backup')
+      const nextPlan = await prepareRestorePlan(db, backup, ownerId, user.uid, mode)
+      if (!isCurrentSession()) throw new Error('تغيّر الحساب قبل تجهيز الاستعادة.')
+      plan = nextPlan
+      restoreComplete = false
+      setStatus('تم التحقق من الحساب والنسخة. راجع الملخص قبل المتابعة.')
+      renderPlan()
+    } catch (error) {
+      modeButtons.forEach((button) => { button.disabled = false })
+      setStatus(friendlyBackupError(error), true)
+    } finally {
+      backupImportActive = false
+    }
+  }
+  const renderPlan = () => {
+    const planElement = preview.querySelector<HTMLElement>('#restore-plan')
+    if (!planElement || !plan) return
+    const isReplace = plan.mode === 'replace'
+    const hasExistingData = plan.targetProductCount > 0
+      || plan.targetCategoryCount > 0
+      || plan.targetSettingsCount > 0
+      || plan.targetHasCloudinarySettings
+    if (restoreComplete) {
+      planElement.innerHTML = `<p class="backup-success">تمت الاستعادة والتحقق من ${plan.expectedProducts.size} منتجًا و${plan.expectedCategories.size} فئة.</p>`
+      return
+    }
+    planElement.innerHTML = `
+      <div class="backup-plan ${isReplace ? 'is-destructive' : ''}">
+        <h3>${isReplace ? 'ملخص الاستعادة الكاملة' : 'ملخص دمج البيانات'}</h3>
+        <p>${isReplace
+          ? `ستُستبدل بيانات المنتجات والفئات في المساحة الحالية. ستُحذف ${plan.productsToDelete.length} منتجات و${plan.categoriesToDelete.length} فئات غير موجودة في النسخة.`
+          : `سيُضاف ${plan.productsToWrite.length} منتجات و${plan.categoriesToWrite.length} فئات، مع إبقاء بيانات الحساب الحالية.`}</p>
+        <p>البيانات الحالية: ${plan.targetProductCount} منتجات، ${plan.targetCategoryCount} فئات، ${plan.targetSettingsCount} إعدادات محفوظة${plan.targetHasCloudinarySettings ? '، وإعدادات رفع صور' : ''}.</p>
+        <p>ستتم معالجة ${backup?.manifest.counts.settings ?? 0} من إعدادات النسخة، بما فيها تفضيلات الجهاز.</p>
+        <p>الحساب المستهدف: <bdi dir="ltr">${escapeHtml(user.email || user.uid)}</bdi></p>
+        ${plan.remappedIds ? `<p>تعارضت بعض المعرّفات؛ سيُعاد تعيين ${plan.remappedIds} معرّفًا مع تحديث روابط الفئات.</p>` : ''}
+        ${!isReplace && (plan.skippedProducts || plan.skippedCategories) ? `<p>سيتم تجاوز ${plan.skippedProducts} منتجات و${plan.skippedCategories} فئات مطابقة بالمعرّف والمحتوى.</p>` : ''}
+        ${ownerId === sharedDataUserId ? '<p class="backup-warning">تنبيه: هذا الحساب يستخدم مساحة بيانات مشتركة بحسب إعداد التطبيق الحالي.</p>' : ''}
+        ${isReplace && hasExistingData ? '<p class="backup-warning">تحذير: سيجري استبدال بيانات التطبيق الحالية غير الموجودة في النسخة.</p>' : ''}
+        ${isReplace ? '<p class="backup-warning">ستُستبدل تفضيلات الحساب والجهاز بالإعدادات الموجودة في النسخة.</p>' : ''}
+        <label class="backup-confirm"><input id="confirm-restore" type="checkbox"><span>أوافق على تنفيذ ${isReplace ? 'الاستعادة الكاملة' : 'دمج البيانات'} في مساحة الحساب الحالي.</span></label>
+        <button class="primary-button" id="run-restore" type="button" disabled>${isReplace ? 'تأكيد الاستعادة الكاملة' : 'تأكيد الدمج'}</button>
+      </div>
+      <div class="backup-progress" id="restore-progress" hidden>
+        <progress max="100" value="0" aria-label="تقدم استعادة البيانات"></progress>
+        <span id="restore-progress-label">0%</span>
+      </div>
+    `
+    const confirmInput = planElement.querySelector<HTMLInputElement>('#confirm-restore')!
+    const runButton = planElement.querySelector<HTMLButtonElement>('#run-restore')!
+    confirmInput.addEventListener('change', () => { runButton.disabled = !confirmInput.checked })
+    runButton.addEventListener('click', () => void runRestore(runButton, confirmInput))
+  }
+  const runRestore = async (runButton: HTMLButtonElement, confirmInput: HTMLInputElement) => {
+    if (!plan || !confirmInput.checked || backupImportActive) return
+    backupImportActive = true
+    runButton.disabled = true
+    confirmInput.disabled = true
+    const modeButtons = preview.querySelectorAll<HTMLButtonElement>('.backup-mode-actions button')
+    modeButtons.forEach((button) => { button.disabled = true })
+    const progressContainer = preview.querySelector<HTMLElement>('#restore-progress')!
+    const progress = progressContainer.querySelector<HTMLProgressElement>('progress')!
+    const progressLabel = preview.querySelector<HTMLElement>('#restore-progress-label')!
+    progressContainer.hidden = false
+    setStatus('جارٍ استعادة البيانات والتحقق منها...')
+    try {
+      const { executeRestorePlan } = await import('./user-backup')
+      const result = await executeRestorePlan(
+        db,
+        plan,
+        isCurrentSession,
+        (percent) => {
+          progress.value = percent
+          progressLabel.textContent = `${percent}%`
+        },
+      )
+      settings = plan.settingsToRestore
+      applyTheme(settings.darkMode)
+      updateCategoryBar()
+      updateProductList()
+      restoreComplete = true
+      renderPlan()
+      setStatus(`اكتملت الاستعادة والتحقق: ${result.products} منتجًا و${result.categories} فئة.`)
+    } catch (error) {
+      setStatus(`${friendlyBackupError(error)} لم يُعلن اكتمال الاستعادة؛ إذا انقطع الاتصال أثناء الكتابة فقد تكون بعض الدفعات قد نُفذت.`, true)
+      confirmInput.disabled = false
+      confirmInput.checked = false
+      runButton.disabled = true
+      modeButtons.forEach((button) => { button.disabled = false })
+    } finally {
+      backupImportActive = false
+    }
+  }
+
+  createButton.addEventListener('click', async () => {
+    if (!isCurrentSession()) return
+    createButton.disabled = true
+    chooseButton.disabled = true
+    setStatus('جارٍ جمع البيانات والتحقق من العلاقات وإنشاء ملف ZIP...')
+    try {
+      const { createBackupArchive } = await import('./user-backup')
+      const archive = await createBackupArchive(db, ownerId, user.uid, loadCachedSettings(ownerId))
+      if (!isCurrentSession()) throw new Error('تغيّر الحساب أثناء إنشاء النسخة.')
+      const url = URL.createObjectURL(archive)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `asaar-backup-${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      setStatus('تم إنشاء ملف النسخة الاحتياطية وتنزيله على جهازك.')
+    } catch (error) {
+      setStatus(friendlyBackupError(error), true)
+    } finally {
+      createButton.disabled = false
+      chooseButton.disabled = false
+    }
+  })
+  chooseButton.addEventListener('click', () => {
+    if (!backupImportActive) fileInput.click()
+  })
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0]
+    fileInput.value = ''
+    if (!file || backupImportActive) return
+    backupImportActive = true
+    backup = null
+    plan = null
+    restoreComplete = false
+    renderPreview()
+    chooseButton.disabled = true
+    createButton.disabled = true
+    setStatus('جارٍ قراءة ملف ZIP والتحقق من الإصدار والبيانات والعلاقات...')
+    try {
+      const { readBackupArchive } = await import('./user-backup')
+      backup = await readBackupArchive(file)
+      if (!isCurrentSession()) throw new Error('تغيّر الحساب أثناء قراءة النسخة.')
+      renderPreview()
+      setStatus('النسخة صالحة. اختر نوع الاستيراد لمراجعة الملخص قبل التنفيذ.')
+    } catch (error) {
+      setStatus(friendlyBackupError(error), true)
+    } finally {
+      backupImportActive = false
+      chooseButton.disabled = false
+      createButton.disabled = false
+    }
+  })
 }
 function bindCloudinarySettingsPanel(content: HTMLElement) {
   const user = currentUser
