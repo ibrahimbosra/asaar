@@ -652,7 +652,7 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-export-summary > div[hidden] { display: none; }
 .invoice-export-summary span { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .invoice-export-summary strong { color: var(--ink); font-size: 12px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
-.invoice-export-summary bdi { direction: ltr; unicode-bidi: isolate; }
+.invoice-export-summary bdi { unicode-bidi: isolate; }
 .invoice-export-summary .invoice-export-total-card { background: #e3f1ef; }
 .invoice-export-summary .invoice-export-total-card strong { color: var(--teal); }
 .invoice-export-summary .invoice-export-discount-card { background: #fff0ed; }
@@ -668,11 +668,13 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-discount-option > button.is-active { border-color: var(--teal); background: var(--teal); color: #fff; }
 .invoice-discount-value { position: relative; display: block; width: 100%; min-width: 0; }
 .invoice-discount-value input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; border-radius: 8px; padding: 5px 4px 5px 28px; direction: ltr; text-align: center; font-size: 12px; }
+.invoice-discount-value-syp input { padding-right: 4px; padding-left: 28px; }
 .invoice-discount-value input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 .invoice-discount-value input[type="number"]::-webkit-inner-spin-button,
 .invoice-discount-value input[type="number"]::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
 .invoice-discount-value input:disabled { background: #f3f6f7; color: var(--muted); }
 .invoice-discount-value span { position: absolute; top: 50%; left: 6px; transform: translateY(-50%); color: var(--muted); font-size: 10px; pointer-events: none; }
+.invoice-discount-value-syp span { right: auto; left: 6px; }
 .invoice-export-format label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .invoice-export-format input[type="radio"] { width: 18px; min-height: 18px; flex: 0 0 18px; margin: 0; accent-color: var(--teal); }
 .invoice-customer-export-dialog > p { margin: 10px 0 0; }
@@ -895,6 +897,7 @@ body.dark-mode .invoice-export-summary .invoice-export-final-card strong { color
 body.dark-mode .invoice-discount-option > button { border-color: #2b3b49; background: #202d37; color: #aab8c5; }
 body.dark-mode .invoice-discount-option > button.is-active { border-color: #3d7773; background: var(--teal); color: #fff; }
 body.dark-mode .invoice-customer-export-dialog .invoice-discount-value input { min-height: 40px; border-color: #2b3b49; background: #111b24; color: #e6edf3; }
+body.dark-mode .invoice-customer-export-dialog .invoice-discount-value-syp input { padding-right: 4px; padding-left: 28px; }
 body.dark-mode .invoice-customer-export-dialog .invoice-discount-value input:disabled { background: #202d37; color: #718096; }
 body.dark-mode .invoice-print-discount { color: #e6edf3; }
 body.dark-mode .invoice-customer-export-dialog .invoice-print-discount input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; }

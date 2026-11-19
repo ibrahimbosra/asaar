@@ -2555,9 +2555,9 @@ function renderInvoiceModal() {
         <div class="invoice-export-summary">
           <div class="invoice-export-count-card"><span>عدد الأصناف</span><strong>${rows.length}</strong></div>
           <div class="invoice-export-count-card"><span>عدد القطع</span><strong>${totalPieces}</strong></div>
-          <div class="invoice-export-total-card"><span data-invoice-total-label>إجمالي الفاتورة</span><strong data-invoice-total-before><bdi dir="ltr">${formatAmount(invoiceTotal)}</bdi></strong></div>
-          <div class="invoice-export-discount-card" hidden><span data-invoice-discount-label>قيمة الخصم</span><strong data-invoice-discount-total><bdi dir="ltr">${formatAmount(0)}</bdi></strong></div>
-          <div class="invoice-export-final-card" hidden><span>الإجمالي بعد الخصم</span><strong data-invoice-total-after><bdi dir="ltr">${formatAmount(invoiceTotal)}</bdi></strong></div>
+          <div class="invoice-export-total-card"><span data-invoice-total-label>إجمالي الفاتورة</span><strong data-invoice-total-before><bdi dir="${currency === 'syp' ? 'rtl' : 'ltr'}">${formatAmount(invoiceTotal)}</bdi></strong></div>
+          <div class="invoice-export-discount-card" hidden><span data-invoice-discount-label>قيمة الخصم</span><strong data-invoice-discount-total><bdi dir="${currency === 'syp' ? 'rtl' : 'ltr'}">${formatAmount(0)}</bdi></strong></div>
+          <div class="invoice-export-final-card" hidden><span>الإجمالي بعد الخصم</span><strong data-invoice-total-after><bdi dir="${currency === 'syp' ? 'rtl' : 'ltr'}">${formatAmount(invoiceTotal)}</bdi></strong></div>
         </div>
         <div class="invoice-export-controls">
           <fieldset class="invoice-export-format">
@@ -2573,7 +2573,7 @@ function renderInvoiceModal() {
             </div>
             <div class="invoice-discount-option">
               <button type="button" data-invoice-discount-mode="amount" aria-pressed="false">خصم بمبلغ ثابت</button>
-              <label class="invoice-discount-value"><input id="invoice-discount-amount" type="number" min="${currency === 'syp' ? '1' : '0.01'}" max="${invoiceTotal}" step="${currency === 'syp' ? '1' : '0.01'}" inputmode="decimal" aria-label="قيمة الخصم بالعملة المحددة" disabled><span>${currency === 'syp' ? 'ل.س' : '$'}</span></label>
+              <label class="invoice-discount-value${currency === 'syp' ? ' invoice-discount-value-syp' : ''}"><input id="invoice-discount-amount" type="number" min="${currency === 'syp' ? '1' : '0.01'}" max="${invoiceTotal}" step="${currency === 'syp' ? '1' : '0.01'}" inputmode="decimal" aria-label="قيمة الخصم بالعملة المحددة" disabled><span>${currency === 'syp' ? 'ل.س' : '$'}</span></label>
             </div>
           </fieldset>
         </div>
@@ -2865,8 +2865,8 @@ async function exportInvoiceToExcel(
     const redBorder = { style: 'medium' as const, color: { argb: 'FFC62828' } }
     totalAmountCell.border = { top: redBorder, right: redBorder, bottom: redBorder, left: redBorder }
     worksheet.getCell(`A${customerOrganizerRow.number}`).alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true, wrapText: false }
-    worksheet.getColumn('price').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
-    worksheet.getColumn('total').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
+    worksheet.getColumn('price').numFmt = currency === 'syp' ? '"ل.س" #,##0' : '$#,##0.00'
+    worksheet.getColumn('total').numFmt = currency === 'syp' ? '"ل.س" #,##0' : '$#,##0.00'
     const buffer = await workbook.xlsx.writeBuffer()
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
@@ -3064,7 +3064,7 @@ async function exportInvoiceToImage(
           context.fillStyle = '#203044'
           context.font = '20px Arial, sans-serif'
           context.textAlign = 'right'
-          context.direction = 'ltr'
+          context.direction = currency === 'syp' ? 'rtl' : 'ltr'
           context.fillText(formatAmount(row.total), columnEdges[1] - 14, rowTop + rowHeight / 2, columnEdges[1] - columnEdges[0] - 20)
           context.fillText(formatAmount(row.price), columnEdges[2] - 14, rowTop + rowHeight / 2, columnEdges[2] - columnEdges[1] - 20)
           context.textAlign = 'center'
@@ -3102,7 +3102,7 @@ async function exportInvoiceToImage(
       context.direction = 'rtl'
       context.textAlign = 'right'
       context.fillText('إجمالي هذه الصفحة', columnEdges[4] - 14, subtotalTop + subtotalHeight / 2)
-      context.direction = 'ltr'
+      context.direction = currency === 'syp' ? 'rtl' : 'ltr'
       context.textAlign = 'right'
       context.fillText(formatAmount(pageTotal), columnEdges[1] - 14, subtotalTop + subtotalHeight / 2, columnEdges[1] - columnEdges[0] - 20)
       if (isLastPage) {
@@ -3125,6 +3125,7 @@ async function exportInvoiceToImage(
           const valueX = x + cardWidth / 2
           const valueY = y + 59
           const valueMaxWidth = cardWidth - 24
+          context.direction = currency === 'syp' ? 'rtl' : 'ltr'
           context.fillText(card.value, valueX, valueY, valueMaxWidth)
           if (card.outlineAmount) {
             const outlineWidth = Math.min(context.measureText(card.value).width, valueMaxWidth) + 16
