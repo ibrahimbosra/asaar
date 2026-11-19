@@ -294,21 +294,59 @@ function renderAuth(error = '', signUp = false) {
         <input name="password" type="password" autocomplete="current-password" minlength="6" placeholder="••••••••" required>
       </label>`}<p class="form-error">${escapeHtml(error)}</p><button class="primary-button" type="submit" id="auth-submit">${signUp ? 'إنشاء الحساب' : 'تسجيل الدخول'}</button><button class="text-button" type="button" id="toggle-auth">${signUp ? 'لديك حساب؟ تسجيل الدخول' : 'إنشاء حساب جديد'}</button></form></main>`
   document.querySelector('.auth-page')?.insertAdjacentHTML('beforeend', developerFooter())
+  if (signUp) {
+    const form = document.querySelector<HTMLFormElement>('#auth-form')!
+    form.querySelector('.form-error')!.insertAdjacentHTML('beforebegin', `
+      <div class="auth-policy-consent">
+        <input id="signup-policy-accepted" name="policyAccepted" type="checkbox" required>
+        <label for="signup-policy-accepted">أوافق على</label>
+        <button class="auth-policy-link" id="auth-policy-link" type="button">سياسة الاستخدام</button>
+      </div>
+    `)
+    const policyLink = form.querySelector<HTMLButtonElement>('#auth-policy-link')!
+    policyLink.addEventListener('click', () => openUsagePolicyDialog(policyLink))
+  } else {
+    const form = document.querySelector<HTMLFormElement>('#auth-form')!
+    form.querySelector('.form-error')!.insertAdjacentHTML('beforebegin', `
+      <div class="auth-policy-login">
+        <span>للاطلاع على</span>
+        <button class="auth-policy-link" id="auth-policy-link" type="button">سياسة الاستخدام</button>
+      </div>
+    `)
+    const policyLink = form.querySelector<HTMLButtonElement>('#auth-policy-link')!
+    policyLink.addEventListener('click', () => openUsagePolicyDialog(policyLink))
+  }
   document.querySelector('#toggle-auth')!.addEventListener('click', () => renderAuth('', !signUp))
   document.querySelectorAll<HTMLButtonElement>('.password-visibility-toggle').forEach(attachPasswordToggle)
-  document.querySelector<HTMLFormElement>('#auth-form')!.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget as HTMLFormElement); const button = document.querySelector<HTMLButtonElement>('#auth-submit')!; button.disabled = true; button.textContent = 'جارٍ المتابعة...'; try { const email = String(form.get('email')); if (signUp) {
-      const password = String(form.get('password'))
-      const confirmPassword = String(form.get('confirmPassword'))
-      if (password !== confirmPassword) {
-        renderAuth('كلمتا المرور غير متطابقتين', true)
-        return
-      }
-      await createUserWithEmailAndPassword(auth, email, password)
-    } else {
-      const password = String(form.get('password'))
-      await signInWithEmailAndPassword(auth, email, password)
+  document.querySelector<HTMLFormElement>('#auth-form')!.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const authForm = event.currentTarget as HTMLFormElement
+    const form = new FormData(authForm)
+    if (signUp && authForm.querySelector<HTMLInputElement>('#signup-policy-accepted')?.checked !== true) {
+      authForm.querySelector<HTMLElement>('.form-error')!.textContent = 'يجب الموافقة على سياسة الاستخدام لإنشاء الحساب.'
+      return
     }
-  } catch (submitError) { renderAuth(authErrorMessage(submitError), signUp) } })
+    const button = document.querySelector<HTMLButtonElement>('#auth-submit')!
+    button.disabled = true
+    button.textContent = 'جارٍ المتابعة...'
+    try {
+      const email = String(form.get('email'))
+      if (signUp) {
+        const password = String(form.get('password'))
+        const confirmPassword = String(form.get('confirmPassword'))
+        if (password !== confirmPassword) {
+          renderAuth('كلمتا المرور غير متطابقتين', true)
+          return
+        }
+        await createUserWithEmailAndPassword(auth, email, password)
+      } else {
+        const password = String(form.get('password'))
+        await signInWithEmailAndPassword(auth, email, password)
+      }
+    } catch (submitError) {
+      renderAuth(authErrorMessage(submitError), signUp)
+    }
+  })
   updateInstallButton()
 }
 
@@ -1432,31 +1470,102 @@ function renderEditModal(id: string) {
 }
 function nextProductNumber() { const numbers = products.filter((product) => product.storedNumber).map((product) => product.number); return (numbers.length ? Math.max(...numbers) : 0) + 1 }
 function renderDeleteModal(id: string) { const product = products.find((item) => item.id === id); if (!product || !currentUser) return; const element = modal(`<p class="eyebrow">تأكيد الحذف</p><h2>حذف ${escapeHtml(product.name)}؟</h2><p class="modal-copy">سيتم إزالة هذا المنتج من قائمتك.</p><p class="modal-error" id="modal-error"></p><div class="modal-actions"><button class="secondary-button" id="cancel-delete">إلغاء</button><button class="danger-button" id="confirm-delete">حذف المنتج</button></div>`); element.querySelector('#cancel-delete')!.addEventListener('click', () => element.remove()); element.querySelector('#confirm-delete')!.addEventListener('click', async () => { const button = element.querySelector<HTMLButtonElement>('#confirm-delete')!; button.disabled = true; try { await deleteDoc(doc(db, 'users', dataUserId, 'products', id)); products = products.filter((item) => item.id !== id); updateProductList(); element.remove() } catch (deleteError) { button.disabled = false; element.querySelector('#modal-error')!.textContent = friendlyError(deleteError) } }) }
-function renderSettingsNew() {
-  if (!currentUser) return
-  const element = modal(`
-    <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
-    <button class="settings-policy-trigger" id="settings-policy-trigger" type="button">سياسة الخصوصية</button>
-    <p class="eyebrow">تفضيلاتك</p>
-    <div class="settings-tabs">
-      <button class="active" data-settings-tab="currency">العملة</button>
-      <button data-settings-tab="categories">الفئات</button>
-      <button data-settings-tab="system">النظام</button>
-      <button data-settings-tab="backup">نسخ احتياطي</button>
-    </div>
-    <div id="settings-content"></div>
-  `)
-  element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
-  const policyTrigger = element.querySelector<HTMLButtonElement>('#settings-policy-trigger')!
-  policyTrigger.addEventListener('click', () => {
+function openUsagePolicyDialog(returnFocus: HTMLElement | null = null) {
     const policyDialog = document.createElement('dialog')
     policyDialog.className = 'privacy-policy-dialog'
     policyDialog.setAttribute('aria-labelledby', 'privacy-policy-title')
     policyDialog.dir = 'rtl'
     policyDialog.innerHTML = `
       <button class="modal-close privacy-policy-close" type="button" aria-label="إغلاق">${svg('close')}</button>
-      <h2 id="privacy-policy-title">🔐 تنويه هام بشأن الخصوصية والأمانة وحماية البيانات</h2>
-      <div class="privacy-policy-content">
+      <h2 id="privacy-policy-title">سياسة الاستخدام</h2>
+      <div class="privacy-policy-tabs" role="tablist" aria-label="سياسة الاستخدام">
+        <button id="policy-terms-tab" type="button" role="tab" aria-selected="true" aria-controls="policy-terms-panel">سياسة الخصوصية وشروط الاستخدام</button>
+        <button id="policy-disclaimer-tab" type="button" role="tab" aria-selected="false" aria-controls="policy-disclaimer-panel" tabindex="-1">إخلاء مسؤولية المطوّر والأمانة التقنية</button>
+      </div>
+      <div id="policy-terms-panel" class="privacy-policy-content" role="tabpanel" aria-labelledby="policy-terms-tab">
+        <h3>🔐 سياسة الخصوصية وشروط الاستخدام</h3>
+        <p><strong>مرحباً بكم</strong></p>
+        <p>حرصاً منا على توفير بيئة استخدام آمنة ومنظمة، نرجو من جميع مستخدمي التطبيق قراءة سياسة الخصوصية وشروط الاستخدام بعناية.</p>
+        <p>إن إنشاء حساب أو تسجيل الدخول أو استخدام أي من خدمات التطبيق يُعد إقراراً من المستخدم باطلاعه على هذه الشروط وموافقته عليها، بالقدر الذي يسمح به القانون المعمول به.</p>
+        <section>
+          <h3>أولاً: الاستخدام المشروع للتطبيق</h3>
+          <ol>
+            <li>يُمنع استخدام التطبيق لأي أغراض غير قانونية أو غير مشروعة أو مخالفة للأنظمة واللوائح المعمول بها.</li>
+            <li>يلتزم المستخدم باستخدام التطبيق في الأغراض المخصصة له فقط، وعدم استغلال خدماته في الإضرار بالآخرين أو انتهاك حقوقهم.</li>
+            <li>يُمنع استخدام التطبيق لنشر أو تداول أي محتوى احتيالي أو مضلل أو مسيء أو مخالف للقوانين.</li>
+            <li>يتحمل المستخدم مسؤولية صحة المعلومات والبيانات التي يقوم بإدخالها أو نشرها من خلال التطبيق.</li>
+          </ol>
+        </section>
+        <section>
+          <h3>ثانياً: حماية النظام ومنع الاستغلال</h3>
+          <ol>
+            <li>يُمنع منعاً باتاً محاولة استغلال أي ثغرة أمنية أو خطأ برمجي أو خلل تقني في التطبيق للوصول إلى بيانات أو معلومات أو وظائف غير مصرح للمستخدم بالوصول إليها.</li>
+            <li>يُمنع محاولة تجاوز أنظمة الحماية أو قيود الصلاحيات أو آليات تسجيل الدخول والتحقق من الهوية.</li>
+            <li>يُمنع محاولة الوصول إلى حسابات المستخدمين الآخرين أو الاطلاع على بياناتهم أو تعديلها أو حذفها دون إذن.</li>
+            <li>يُمنع اعتراض الاتصالات أو التلاعب بالطلبات المرسلة إلى الخوادم أو محاولة استخراج البيانات بطرق غير مصرح بها.</li>
+            <li>يُمنع استخدام أدوات آلية أو برامج خارجية لإجراء عمليات تؤثر على استقرار التطبيق أو أدائه أو أمنه.</li>
+            <li>يُمنع إجراء اختبارات أمنية أو محاولات اختراق أو فحص للبنية التقنية للتطبيق دون الحصول على موافقة مسبقة وصريحة من المطوّر.</li>
+          </ol>
+        </section>
+        <section>
+          <h3>ثالثاً: خصوصية المستخدمين والبيانات</h3>
+          <ol>
+            <li>يلتزم جميع المستخدمين باحترام خصوصية الآخرين وعدم محاولة الوصول إلى معلوماتهم أو بياناتهم الشخصية أو التجارية.</li>
+            <li>يُمنع جمع بيانات المستخدمين أو نسخها أو مشاركتها أو استخدامها خارج الأغراض المصرح بها.</li>
+            <li>يتحمل كل مستخدم مسؤولية المحافظة على بيانات تسجيل الدخول الخاصة به وعدم مشاركتها مع الآخرين.</li>
+            <li>لا يجوز استخدام المعلومات أو الأسعار أو بيانات المنتجات الخاصة بالمستخدمين الآخرين دون إذن أصحابها.</li>
+            <li>تُعالج البيانات الشخصية وفق سياسة الخصوصية وآلية معالجة البيانات المعتمدة للتطبيق والقوانين المعمول بها.</li>
+          </ol>
+        </section>
+        <section>
+          <h3>رابعاً: الإبلاغ عن الأخطاء والثغرات</h3>
+          <p>إذا اكتشف المستخدم أي خطأ برمجي أو ثغرة أمنية أو خلل قد يؤثر على خصوصية البيانات أو سلامة التطبيق، فإنه يُطلب منه:</p>
+          <ul>
+            <li>التوقف عن محاولة استغلال الخلل فور اكتشافه.</li>
+            <li>عدم محاولة الوصول إلى بيانات الآخرين أو نسخها أو الاحتفاظ بها.</li>
+            <li>عدم نشر تفاصيل الثغرة أو مشاركتها مع أطراف أخرى بما قد يؤدي إلى استغلالها.</li>
+            <li>إبلاغ إدارة التطبيق أو المطوّر بالتفاصيل اللازمة لمعالجة المشكلة.</li>
+          </ul>
+          <p>نقدّر كل مستخدم يساهم في تحسين أمن التطبيق من خلال الإبلاغ المسؤول عن المشكلات التقنية.</p>
+        </section>
+        <section>
+          <h3>خامساً: إساءة الاستخدام والمسؤولية</h3>
+          <p>يحتفظ القائمون على التطبيق بالحق في اتخاذ الإجراءات المناسبة عند رصد أي استخدام مخالف لهذه الشروط، بما في ذلك تقييد بعض الوظائف أو تعليق الحساب أو إيقافه، وفقاً لطبيعة المخالفة والقوانين المعمول بها.</p>
+          <p>كما يحتفظ التطبيق بالحق في اتخاذ الإجراءات القانونية المناسبة عند وجود ما يستدعي ذلك.</p>
+          <p>ويتحمل المستخدم المسؤولية عن الأضرار التي يتسبب بها نتيجة إساءة استخدام التطبيق أو مخالفة هذه الشروط، وفقاً للقانون.</p>
+        </section>
+        <section>
+          <h3>سادساً: التعديلات على السياسة</h3>
+          <p>قد يتم تحديث سياسة الخصوصية وشروط الاستخدام من وقت إلى آخر بهدف تحسين مستوى الأمان وتطوير الخدمات ومواكبة المتطلبات القانونية والتقنية.</p>
+          <p>وسيتم نشر النسخة المحدّثة داخل التطبيق، مع توضيح تاريخ آخر تحديث.</p>
+        </section>
+        <section>
+          <h3>سابعاً: الالتزام بالشروط</h3>
+          <p>إن استمرار استخدام التطبيق بعد نشر التعديلات، وفقاً لما يسمح به القانون، يُعد قبولاً بالشروط المحدّثة.</p>
+          <p>أما إذا لم يوافق المستخدم على هذه الشروط، فعليه التوقف عن استخدام التطبيق.</p>
+        </section>
+        <section>
+          <h3>ثامناً: حقوق الملكية الفكرية ومنع إعادة البيع أو التأجير</h3>
+          <ol>
+            <li>تعود حقوق الملكية الفكرية للتطبيق، بما يشمل التصميم والواجهات والبرمجة والأكواد المصدرية والبنية التقنية والأنظمة والوظائف البرمجية، إلى مالكها أو أصحاب الحقوق المعنيين بها.</li>
+            <li>يُمنع منعاً باتاً إعادة بيع التطبيق أو تأجيره أو تأجيره من الباطن أو إعادة توزيعه أو منحه للغير بمقابل أو دون مقابل، كلياً أو جزئياً، دون الحصول على إذن مسبق وصريح من المطوّر أو صاحب الحق.</li>
+            <li>يُمنع نسخ التطبيق أو إعادة إنتاجه أو إنشاء نسخة مشتقة منه أو استنساخ تصميمه أو برمجته أو استغلال مكوناته التقنية لأغراض تجارية دون موافقة خطية مسبقة من صاحب الحقوق.</li>
+            <li>لا يمنح استخدام التطبيق أو الاشتراك فيه أو امتلاك حساب داخله المستخدم أي حقوق ملكية أو حق تصرف في التطبيق أو أكواده أو تصميمه أو بنيته البرمجية.</li>
+            <li>لا يجوز فك التطبيق أو إجراء الهندسة العكسية عليه أو محاولة استخراج أكواده المصدرية أو إعادة استخدامها، إلا في الحدود التي يسمح بها القانون أو بموافقة صريحة من صاحب الحقوق.</li>
+            <li>يحتفظ المطوّر أو صاحب الحقوق بحقه في اتخاذ الإجراءات القانونية المناسبة تجاه أي استخدام أو نسخ أو إعادة بيع أو تأجير أو استغلال غير مصرح به للتطبيق.</li>
+          </ol>
+        </section>
+        <section>
+          <h3>رسالتنا لكم</h3>
+          <p>نؤمن بأن التقنية وُجدت لتسهيل حياة الناس وخدمة أعمالهم، لا لانتهاك خصوصياتهم أو الإضرار بمصالحهم.</p>
+          <p>نحترم خصوصية الجميع، ونرفض التجسس والغش واستغلال الثغرات وخيانة الأمانة، ونسعى إلى أن يكون هذا التطبيق مساحة قائمة على الثقة والاحترام والمسؤولية.</p>
+          <p>شكراً لثقتكم واستخدامكم التطبيق.</p>
+          <p><strong>إدارة التطبيق والمطوّر</strong></p>
+        </section>
+        <p class="privacy-policy-updated">آخر تحديث: 19 نوفمبر 2026</p>
+      </div>
+      <div id="policy-disclaimer-panel" class="privacy-policy-content" role="tabpanel" aria-labelledby="policy-disclaimer-tab" hidden>
+        <h3>🔐 تنويه هام بشأن الخصوصية والأمانة وحماية البيانات</h3>
         <p>نحرص على أن تكون الأمانة والشفافية أساس التعامل مع جميع مستخدمي هذا التطبيق، ولذلك نود توضيح بعض الأمور المتعلقة بخصوصية البيانات وصلاحيات مطوّر التطبيق.</p>
         <section>
           <h3>أولاً: خصوصية البيانات الشخصية</h3>
@@ -1492,6 +1601,28 @@ function renderSettingsNew() {
         </section>
       </div>
     `
+    const policyTabs = Array.from(policyDialog.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+    const policyPanels = Array.from(policyDialog.querySelectorAll<HTMLElement>('[role="tabpanel"]'))
+    const activatePolicyTab = (tab: HTMLButtonElement, focus = false) => {
+      policyTabs.forEach((item) => {
+        const selected = item === tab
+        item.setAttribute('aria-selected', String(selected))
+        item.tabIndex = selected ? 0 : -1
+      })
+      policyPanels.forEach((panel) => {
+        panel.hidden = panel.id !== tab.getAttribute('aria-controls')
+      })
+      if (focus) tab.focus()
+    }
+    policyTabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activatePolicyTab(tab))
+      tab.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return
+        event.preventDefault()
+        const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? policyTabs.length - 1 : (index + (event.key === 'ArrowLeft' ? 1 : -1) + policyTabs.length) % policyTabs.length
+        activatePolicyTab(policyTabs[nextIndex], true)
+      })
+    })
     const closePolicy = () => policyDialog.close()
     policyDialog.querySelector('.privacy-policy-close')!.addEventListener('click', closePolicy)
     policyDialog.addEventListener('click', (event) => {
@@ -1503,12 +1634,30 @@ function renderSettingsNew() {
     })
     policyDialog.addEventListener('close', () => {
       policyDialog.remove()
-      if (policyTrigger.isConnected) policyTrigger.focus()
+      if (returnFocus?.isConnected) returnFocus.focus()
     }, { once: true })
     document.body.append(policyDialog)
     policyDialog.showModal()
     policyDialog.querySelector<HTMLButtonElement>('.privacy-policy-close')!.focus()
-  })
+}
+
+function renderSettingsNew() {
+  if (!currentUser) return
+  const element = modal(`
+    <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
+    <button class="settings-policy-trigger" id="settings-policy-trigger" type="button">سياسة الاستخدام</button>
+    <p class="eyebrow">تفضيلاتك</p>
+    <div class="settings-tabs">
+      <button class="active" data-settings-tab="currency">العملة</button>
+      <button data-settings-tab="categories">الفئات</button>
+      <button data-settings-tab="system">النظام</button>
+      <button data-settings-tab="backup">نسخ احتياطي</button>
+    </div>
+    <div id="settings-content"></div>
+  `)
+  element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
+  const policyTrigger = element.querySelector<HTMLButtonElement>('#settings-policy-trigger')!
+  policyTrigger.addEventListener('click', () => openUsagePolicyDialog(policyTrigger))
   const content = element.querySelector<HTMLElement>('#settings-content')!
   const renderTab = (tab: string) => {
     element.querySelectorAll<HTMLButtonElement>('[data-settings-tab]').forEach((button) => button.classList.toggle('active', button.dataset.settingsTab === tab))
@@ -2397,7 +2546,9 @@ function renderInvoiceModal() {
         <h3 id="invoice-customer-export-title">تصدير الفاتورة</h3>
         <p class="invoice-export-number">فاتورة رقم <bdi dir="ltr">${invoiceNumber}</bdi></p>
         <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span></label>
-        <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="أدخل اسم الزبون إن رغبت" autocomplete="name">
+        <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="أدخل اسم الزبون إن رغبت لطباعته مع الفاتورة" autocomplete="name">
+        <label for="invoice-organizer-export-name">اسم منظم الفاتورة <span>(اختياري)</span></label>
+        <input id="invoice-organizer-export-name" type="text" maxlength="80" placeholder="أدخل اسم منظم الفاتورة إن رغبت لطباعته مع الفاتورة" autocomplete="name">
         <div class="invoice-export-summary">
           <div><span>إجمالي الفاتورة</span><strong><bdi dir="ltr">${formattedTotal}</bdi></strong></div>
           <div><span>عدد الأصناف</span><strong>${rows.length}</strong></div>
@@ -2416,6 +2567,7 @@ function renderInvoiceModal() {
       </section>
     `
     const nameInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-name')!
+    const organizerInput = backdrop.querySelector<HTMLInputElement>('#invoice-organizer-export-name')!
     const closeDialog = () => {
       document.removeEventListener('keydown', handleDialogKeydown)
       window.removeEventListener('asaar:session-invalidated', closeDialog)
@@ -2428,10 +2580,11 @@ function renderInvoiceModal() {
     backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-cancel')!.addEventListener('click', closeDialog)
     backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-confirm')!.addEventListener('click', () => {
       const customerName = nameInput.value.trim()
+      const organizerName = organizerInput.value.trim()
       const format = backdrop.querySelector<HTMLInputElement>('input[name="invoice-export-format"]:checked')!.value
       closeDialog()
       const exportInvoice = format === 'image' ? exportInvoiceToImage : exportInvoiceToExcel
-      void exportInvoice(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, currency, getInvoiceNumber)
+      void exportInvoice(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, currency, getInvoiceNumber)
     })
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) closeDialog()
@@ -2505,6 +2658,7 @@ async function exportInvoiceToExcel(
   quantities: Map<string, number>,
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
+  organizerName: string,
   currency: 'usd' | 'syp',
   getInvoiceNumber: () => Promise<string>,
 ) {
@@ -2546,15 +2700,18 @@ async function exportInvoiceToExcel(
     worksheet.mergeCells(`A${titleRow.number}:E${titleRow.number}`)
     const invoiceNumberRow = worksheet.addRow([`رقم الفاتورة: ${invoiceNumber}`])
     worksheet.mergeCells(`A${invoiceNumberRow.number}:E${invoiceNumberRow.number}`)
-    const customerText = customerName || '                                       '
-    const customerDateRow = worksheet.addRow([{
+    const customerOrganizerRow = worksheet.addRow([])
+    worksheet.mergeCells(`A${customerOrganizerRow.number}:E${customerOrganizerRow.number}`)
+    worksheet.getCell(`A${customerOrganizerRow.number}`).value = {
       richText: [
-        { text: 'الزبون ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
-        { text: customerText, font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FF007D79' } } },
-        { text: ` المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+        { text: 'الزبون: ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+        { text: customerName || '\u00a0'.repeat(30), font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FF007D79' } } },
+        { text: customerName ? ' المحترم  |  ' : '  |  ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+        { text: 'منظم الفاتورة: ', font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
+        { text: organizerName || '\u00a0'.repeat(30), font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
+        { text: `  |  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
       ],
-    }])
-    worksheet.mergeCells(`A${customerDateRow.number}:E${customerDateRow.number}`)
+    }
     worksheet.addRow([])
     const headerRow = worksheet.addRow(['م', 'الصنف', 'الكمية', `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`])
     const finalTotal = rows.reduce((total, row) => total + row.total, 0)
@@ -2577,13 +2734,13 @@ async function exportInvoiceToExcel(
     worksheet.eachRow((row, rowNumber) => {
       const isTitle = rowNumber === titleRow.number
       const isInvoiceNumber = rowNumber === invoiceNumberRow.number
-      const isCustomer = rowNumber === customerDateRow.number
+      const isCustomerOrganizer = rowNumber === customerOrganizerRow.number
       const isHeader = rowNumber === headerRow.number
       const isTotal = rowNumber === totalRow.number
-      row.height = isTitle ? 30 : isCustomer ? 28 : 24
+      row.height = isTitle ? 30 : isCustomerOrganizer ? 28 : 24
       row.eachCell({ includeEmpty: true }, (cell) => {
-        cell.alignment = { horizontal: isTitle || isCustomer ? 'center' : isInvoiceNumber ? 'left' : 'right', vertical: 'middle' }
-        if (!isCustomer) {
+        cell.alignment = { horizontal: isTitle || isCustomerOrganizer ? 'center' : isInvoiceNumber ? 'left' : 'right', vertical: 'middle' }
+        if (!isCustomerOrganizer) {
           cell.font = { name: 'Arial', size: isTitle ? 16 : isHeader || isTotal ? 12 : 11, bold: isTitle || isHeader || isTotal, color: { argb: isHeader ? 'FFFFFFFF' : isTitle ? 'FF007D79' : isInvoiceNumber ? 'FFC62828' : 'FF203044' } }
         }
         if (isTitle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7F9' } }
@@ -2591,6 +2748,7 @@ async function exportInvoiceToExcel(
         if (isTotal) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE4F3F0' } }
       })
     })
+    worksheet.getCell(`A${customerOrganizerRow.number}`).alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true, wrapText: false }
     worksheet.getColumn('price').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
     worksheet.getColumn('total').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
     const buffer = await workbook.xlsx.writeBuffer()
@@ -2618,6 +2776,7 @@ async function exportInvoiceToImage(
   quantities: Map<string, number>,
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
+  organizerName: string,
   currency: 'usd' | 'syp',
   getInvoiceNumber: () => Promise<string>,
 ) {
@@ -2725,10 +2884,35 @@ async function exportInvoiceToImage(
         context.font = 'bold 15px Arial, sans-serif'
         context.fillText('الصفحة النهائية للفاتورة', rightEdge - 68, 65, 250)
       }
-      context.fillStyle = '#203044'
-      context.font = '20px Arial, sans-serif'
-      context.textAlign = 'center'
-      context.fillText(`الزبون: ${customerName || '—'}    المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, width / 2, 125)
+      const invoiceInfoParts: { text: string; color: string; bold: boolean; reserveName?: boolean }[] = [
+        { text: 'الزبون:', color: '#203044', bold: false },
+        { text: customerName, color: '#007d79', bold: true, reserveName: true },
+        ...(customerName ? [{ text: 'المحترم', color: '#203044', bold: false }] : []),
+        { text: ' | ', color: '#203044', bold: false },
+        { text: 'منظم الفاتورة:', color: '#c62828', bold: true },
+        { text: organizerName, color: '#c62828', bold: true, reserveName: true },
+        { text: ' | ', color: '#203044', bold: false },
+        { text: `التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, color: '#203044', bold: false },
+      ]
+      const blankName = 'محمود المحمودي'
+      const getInfoPartWidth = (part: (typeof invoiceInfoParts)[number]) => part.text
+        ? context.measureText(part.text).width
+        : part.reserveName ? context.measureText(blankName).width : 0
+      const measureInfoWidth = (fontSize: number) => invoiceInfoParts.reduce((total, part) => {
+        context.font = `${part.bold ? 'bold ' : ''}${fontSize}px Arial, sans-serif`
+        return total + getInfoPartWidth(part) + 4
+      }, -4)
+      const availableInfoWidth = rightEdge - margin
+      const infoFontSize = Math.max(9, 20 * Math.min(1, availableInfoWidth / measureInfoWidth(20)))
+      context.textAlign = 'right'
+      let infoTextRight = width / 2 + measureInfoWidth(infoFontSize) / 2
+      invoiceInfoParts.forEach((part, index) => {
+        context.font = `${part.bold ? 'bold ' : ''}${infoFontSize}px Arial, sans-serif`
+        context.fillStyle = part.color
+        const partWidth = getInfoPartWidth(part)
+        if (part.text) context.fillText(part.text, infoTextRight, 125)
+        infoTextRight -= partWidth + (index < invoiceInfoParts.length - 1 ? 4 : 0)
+      })
       context.strokeStyle = '#d7e1e4'
       context.lineWidth = 2
       context.beginPath()

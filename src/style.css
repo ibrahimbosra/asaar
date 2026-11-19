@@ -72,6 +72,12 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-lineca
   text-align: center;
 }
 .auth-form, #product-form { display: grid; gap: 15px; }
+.auth-policy-consent { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 0; color: var(--ink); font-size: 12px; line-height: 1.6; }
+.auth-policy-consent input { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin: 0; padding: 0; accent-color: var(--teal); }
+.auth-policy-consent label { display: inline; margin: 0; font-size: inherit; }
+.auth-policy-login { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.auth-policy-link { background: transparent; color: #1769aa; padding: 0; font-size: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+.auth-policy-link:focus-visible { outline: 2px solid #1769aa; outline-offset: 3px; border-radius: 2px; }
 .auth-header { margin: -6px 0 16px; text-align: center; }
 .auth-header h2 { margin: 0; color: var(--ink); font-size: clamp(22px, 4vw, 30px); line-height: 1.4; }
 label { display: grid; gap: 7px; color: var(--ink); font-size: 13px; }
@@ -518,12 +524,18 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .privacy-policy-dialog { position: fixed; box-sizing: border-box; width: min(calc(100vw - 24px), 680px); max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); overflow: auto; margin: auto; border: 1px solid var(--line); border-radius: 20px; background: var(--white); color: var(--ink); padding: 28px 22px 22px; box-shadow: 0 18px 55px #20304440; }
 .privacy-policy-dialog::backdrop { background: #14233388; backdrop-filter: blur(4px); }
 .privacy-policy-dialog h2 { margin: 0 0 18px 42px; color: var(--ink); font-size: 18px; line-height: 1.65; }
+.privacy-policy-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--line); padding-bottom: 9px; }
+.privacy-policy-tabs button { min-width: 0; min-height: 44px; border: 1px solid var(--line); border-radius: 9px; background: #f3f6f7; color: var(--muted); padding: 6px 8px; font-size: 12px; font-weight: 800; line-height: 1.5; }
+.privacy-policy-tabs button[aria-selected="true"] { border-color: var(--teal); background: #e3f1ef; color: var(--teal); }
+.privacy-policy-tabs button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .privacy-policy-content { display: grid; gap: 14px; }
+.privacy-policy-content[hidden] { display: none; }
 .privacy-policy-content section { display: grid; gap: 8px; }
 .privacy-policy-content h3 { margin: 0; color: var(--teal); font-size: 14px; line-height: 1.6; }
 .privacy-policy-content p, .privacy-policy-content li { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.85; }
-.privacy-policy-content ul { display: grid; gap: 5px; margin: 0; padding-inline-start: 22px; }
+.privacy-policy-content ul, .privacy-policy-content ol { display: grid; gap: 5px; margin: 0; padding-inline-start: 22px; }
 .privacy-policy-content .privacy-policy-quote { border-radius: 9px; background: #f3f6f7; padding: 9px 12px; text-align: center; }
+.privacy-policy-content .privacy-policy-updated { color: var(--muted); font-size: 11px; text-align: center; }
 .privacy-policy-content strong { color: var(--teal-dark); }
 .modal-copy { margin: -10px 0 25px; color: var(--muted); font-size: 13px; }
 .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -912,6 +924,9 @@ body.dark-mode .privacy-policy-dialog { border-color: #2b3b49; background: #1823
 body.dark-mode .privacy-policy-dialog h2, body.dark-mode .privacy-policy-content p, body.dark-mode .privacy-policy-content li { color: #e6edf3; }
 body.dark-mode .privacy-policy-content h3, body.dark-mode .privacy-policy-content strong { color: #7de0d3; }
 body.dark-mode .privacy-policy-content .privacy-policy-quote { background: #202d37; }
+body.dark-mode .privacy-policy-tabs { border-color: #2b3b49; }
+body.dark-mode .privacy-policy-tabs button { border-color: #2b3b49; background: #202d37; color: #aab8c5; }
+body.dark-mode .privacy-policy-tabs button[aria-selected="true"] { border-color: #3d7773; background: #193b3a; color: #7de0d3; }
 body.dark-mode .secondary-button { background: #253441; color: #e6edf3; }
 body.dark-mode .danger-button { background: #542b2d; border-color: #7a3b3d; color: #ffb4a9; }
 body.dark-mode .load-more-products { border-color: #285f5d; background: #193b3a; color: #7de0d3; }
