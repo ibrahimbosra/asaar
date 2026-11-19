@@ -2540,7 +2540,7 @@ function renderInvoiceModal() {
     if (!element.isConnected) return
     const totalPieces = rows.reduce((total, row) => total + row.quantity, 0)
     const invoiceTotal = rows.reduce((total, row) => total + row.total, 0)
-    const formattedTotal = currency === 'syp' ? `${syp(invoiceTotal)} ل.س` : `${money(invoiceTotal)} $`
+    const formatAmount = (value: number) => currency === 'syp' ? `${syp(value)} ل.س` : `${money(value)} $`
     const backdrop = document.createElement('div')
     backdrop.className = 'invoice-customer-export-backdrop'
     backdrop.innerHTML = `
@@ -2553,16 +2553,34 @@ function renderInvoiceModal() {
         <label for="invoice-organizer-export-name">اسم منظم الفاتورة <span>(اختياري)</span></label>
         <input id="invoice-organizer-export-name" type="text" maxlength="80" placeholder="أدخل اسم منظم الفاتورة إن رغبت لطباعته مع الفاتورة" autocomplete="name">
         <div class="invoice-export-summary">
-          <div><span>إجمالي الفاتورة</span><strong><bdi dir="ltr">${formattedTotal}</bdi></strong></div>
-          <div><span>عدد الأصناف</span><strong>${rows.length}</strong></div>
-          <div><span>عدد القطع</span><strong>${totalPieces}</strong></div>
+          <div class="invoice-export-count-card"><span>عدد الأصناف</span><strong>${rows.length}</strong></div>
+          <div class="invoice-export-count-card"><span>عدد القطع</span><strong>${totalPieces}</strong></div>
+          <div class="invoice-export-total-card"><span data-invoice-total-label>إجمالي الفاتورة</span><strong data-invoice-total-before><bdi dir="ltr">${formatAmount(invoiceTotal)}</bdi></strong></div>
+          <div class="invoice-export-discount-card" hidden><span data-invoice-discount-label>قيمة الخصم</span><strong data-invoice-discount-total><bdi dir="ltr">${formatAmount(0)}</bdi></strong></div>
+          <div class="invoice-export-final-card" hidden><span>الإجمالي بعد الخصم</span><strong data-invoice-total-after><bdi dir="ltr">${formatAmount(invoiceTotal)}</bdi></strong></div>
         </div>
-        <fieldset class="invoice-export-format">
-          <legend>نوع التصدير</legend>
-          <label><input type="radio" name="invoice-export-format" value="image" checked> صورة PNG</label>
-          <label><input type="radio" name="invoice-export-format" value="excel"> ملف Excel</label>
-        </fieldset>
-        <p>سيتم تصدير الفاتورة ${currency === 'syp' ? 'بالليرة السورية' : 'بالدولار'}.</p>
+        <div class="invoice-export-controls">
+          <fieldset class="invoice-export-format">
+            <legend>نوع التصدير</legend>
+            <label><input type="radio" name="invoice-export-format" value="image" checked> صورة PNG</label>
+            <label><input type="radio" name="invoice-export-format" value="excel"> ملف Excel</label>
+          </fieldset>
+          <fieldset class="invoice-discount-options">
+            <legend>تفعيل الخصم</legend>
+            <div class="invoice-discount-option">
+              <button type="button" data-invoice-discount-mode="percentage" aria-pressed="false">خصم مئوي</button>
+              <label class="invoice-discount-value"><input id="invoice-discount-percentage" type="number" min="0.01" max="100" step="0.01" inputmode="decimal" aria-label="نسبة الخصم بالمئة" disabled><span>%</span></label>
+            </div>
+            <div class="invoice-discount-option">
+              <button type="button" data-invoice-discount-mode="amount" aria-pressed="false">خصم بمبلغ ثابت</button>
+              <label class="invoice-discount-value"><input id="invoice-discount-amount" type="number" min="${currency === 'syp' ? '1' : '0.01'}" max="${invoiceTotal}" step="${currency === 'syp' ? '1' : '0.01'}" inputmode="decimal" aria-label="قيمة الخصم بالعملة المحددة" disabled><span>${currency === 'syp' ? 'ل.س' : '$'}</span></label>
+            </div>
+          </fieldset>
+        </div>
+        <div class="invoice-export-footer-row">
+          <p>سيتم تصدير الفاتورة ${currency === 'syp' ? 'بالليرة السورية' : 'بالدولار'}.</p>
+          <label class="invoice-print-discount" hidden><input id="invoice-print-discount" type="checkbox">طباعة الخصم مع الفاتورة</label>
+        </div>
         <div class="invoice-customer-export-actions">
           <button type="button" class="secondary-button invoice-customer-export-cancel">إلغاء</button>
           <button type="button" class="primary-button invoice-customer-export-confirm">تأكيد التصدير</button>
@@ -2571,6 +2589,75 @@ function renderInvoiceModal() {
     `
     const nameInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-name')!
     const organizerInput = backdrop.querySelector<HTMLInputElement>('#invoice-organizer-export-name')!
+    const percentageInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-percentage')!
+    const amountInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-amount')!
+    const printDiscountLabel = backdrop.querySelector<HTMLLabelElement>('.invoice-print-discount')!
+    const printDiscountInput = backdrop.querySelector<HTMLInputElement>('#invoice-print-discount')!
+    const modeButtons = [...backdrop.querySelectorAll<HTMLButtonElement>('[data-invoice-discount-mode]')]
+    let activeDiscountMode: InvoiceDiscount['mode'] | null = null
+    let discountWasActive = false
+    const getActiveDiscount = (): Omit<InvoiceDiscount, 'printOnInvoice'> | null => {
+      if (!activeDiscountMode) return null
+      const input = activeDiscountMode === 'percentage' ? percentageInput : amountInput
+      if (!input.value.trim()) return null
+      const value = Number(input.value)
+      if (!Number.isFinite(value) || value <= 0) return null
+      const discountValue = activeDiscountMode === 'percentage' ? Math.min(value, 100) : Math.min(value, invoiceTotal)
+      const rawAmount = activeDiscountMode === 'percentage' ? invoiceTotal * discountValue / 100 : discountValue
+      const roundedAmount = currency === 'syp' ? Math.round(rawAmount) : Number(rawAmount.toFixed(2))
+      const amount = Math.min(invoiceTotal, roundedAmount)
+      return amount > 0 ? { mode: activeDiscountMode, value: discountValue, amount } : null
+    }
+    const renderDiscountSummary = () => {
+      const discount = getActiveDiscount()
+      if (discount && !discountWasActive) printDiscountInput.checked = true
+      if (!discount) printDiscountInput.checked = false
+      discountWasActive = Boolean(discount)
+      printDiscountLabel.hidden = !discount
+      modeButtons.forEach((modeButton) => {
+        const selected = modeButton.dataset.invoiceDiscountMode === activeDiscountMode
+        modeButton.setAttribute('aria-pressed', String(selected))
+        modeButton.classList.toggle('is-active', selected)
+      })
+      percentageInput.disabled = activeDiscountMode !== 'percentage'
+      amountInput.disabled = activeDiscountMode !== 'amount'
+      backdrop.querySelector<HTMLElement>('[data-invoice-total-label]')!.textContent = discount
+        ? 'الإجمالي قبل الخصم'
+        : 'إجمالي الفاتورة'
+      backdrop.querySelector<HTMLElement>('.invoice-export-summary')!.classList.toggle('has-discount', Boolean(discount))
+      backdrop.querySelector<HTMLElement>('.invoice-export-discount-card')!.hidden = !discount
+      backdrop.querySelector<HTMLElement>('.invoice-export-final-card')!.hidden = !discount
+      backdrop.querySelector<HTMLElement>('[data-invoice-total-before] bdi')!.textContent = formatAmount(invoiceTotal)
+      backdrop.querySelector<HTMLElement>('[data-invoice-discount-total] bdi')!.textContent = formatAmount(discount?.amount || 0)
+      backdrop.querySelector<HTMLElement>('[data-invoice-total-after] bdi')!.textContent = formatAmount(invoiceTotal - (discount?.amount || 0))
+      backdrop.querySelector<HTMLElement>('[data-invoice-discount-label]')!.textContent = discount?.mode === 'percentage'
+        ? `قيمة الخصم (${discount.value}%)`
+        : 'قيمة الخصم'
+    }
+    modeButtons.forEach((modeButton) => {
+      modeButton.addEventListener('click', () => {
+        const mode = modeButton.dataset.invoiceDiscountMode
+        if (mode !== 'percentage' && mode !== 'amount') return
+        const previousMode = activeDiscountMode
+        activeDiscountMode = previousMode === mode ? null : mode
+        if (previousMode && previousMode !== activeDiscountMode) {
+          const previousInput = previousMode === 'percentage' ? percentageInput : amountInput
+          previousInput.value = ''
+        }
+        renderDiscountSummary()
+      })
+    })
+    percentageInput.addEventListener('input', () => {
+      const value = Number(percentageInput.value)
+      if (Number.isFinite(value) && value > 100) percentageInput.value = '100'
+      renderDiscountSummary()
+    })
+    amountInput.addEventListener('input', () => {
+      const value = Number(amountInput.value)
+      if (Number.isFinite(value) && value > invoiceTotal) amountInput.value = String(invoiceTotal)
+      renderDiscountSummary()
+    })
+    renderDiscountSummary()
     const closeDialog = () => {
       document.removeEventListener('keydown', handleDialogKeydown)
       window.removeEventListener('asaar:session-invalidated', closeDialog)
@@ -2584,10 +2671,12 @@ function renderInvoiceModal() {
     backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-confirm')!.addEventListener('click', () => {
       const customerName = nameInput.value.trim()
       const organizerName = organizerInput.value.trim()
+      const activeDiscount = getActiveDiscount()
+      const discount = activeDiscount ? { ...activeDiscount, printOnInvoice: printDiscountInput.checked } : null
       const format = backdrop.querySelector<HTMLInputElement>('input[name="invoice-export-format"]:checked')!.value
       closeDialog()
       const exportInvoice = format === 'image' ? exportInvoiceToImage : exportInvoiceToExcel
-      void exportInvoice(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, currency, getInvoiceNumber)
+      void exportInvoice(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, discount, currency, getInvoiceNumber)
     })
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) closeDialog()
@@ -2627,6 +2716,7 @@ function renderInvoiceModal() {
   update()
 }
 
+type InvoiceDiscount = { mode: 'percentage' | 'amount'; value: number; amount: number; printOnInvoice: boolean }
 type InvoiceExportRow = { product: Product; quantity: number; price: number; total: number }
 
 function getInvoiceExportRows(
@@ -2662,6 +2752,7 @@ async function exportInvoiceToExcel(
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
   organizerName: string,
+  discount: InvoiceDiscount | null,
   currency: 'usd' | 'syp',
   getInvoiceNumber: () => Promise<string>,
 ) {
@@ -2680,6 +2771,10 @@ async function exportInvoiceToExcel(
       showToast('لا توجد أصناف صالحة للتصدير.')
       return
     }
+    const invoiceTotal = rows.reduce((total, row) => total + row.total, 0)
+    const discountAmount = discount?.amount || 0
+    const finalTotal = invoiceTotal - discountAmount
+    const printDiscount = Boolean(discount?.amount && discount.printOnInvoice)
     const invoiceNumber = await getInvoiceNumber()
     const ExcelJS = await import('exceljs')
     const workbook = new ExcelJS.Workbook()
@@ -2708,8 +2803,8 @@ async function exportInvoiceToExcel(
     worksheet.getCell(`A${customerOrganizerRow.number}`).value = {
       richText: [
         { text: 'الزبون: ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
-        { text: customerName || '\u00a0'.repeat(30), font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FF007D79' } } },
-        { text: customerName ? ' المحترم  |  ' : '  |  ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+        { text: customerName || '\u00a0'.repeat(30), font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
+        { text: ' المحترم  |  ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
         { text: 'منظم الفاتورة: ', font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
         { text: organizerName || '\u00a0'.repeat(30), font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
         { text: `  |  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
@@ -2717,7 +2812,6 @@ async function exportInvoiceToExcel(
     }
     worksheet.addRow([])
     const headerRow = worksheet.addRow(['م', 'الصنف', 'الكمية', `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`])
-    const finalTotal = rows.reduce((total, row) => total + row.total, 0)
     rows.forEach(({ product, quantity, price, total }, index) => {
       worksheet.addRow({
         order: index + 1,
@@ -2727,6 +2821,18 @@ async function exportInvoiceToExcel(
         total,
       })
     })
+    const beforeDiscountRow = printDiscount
+      ? worksheet.addRow({ order: '', name: 'الإجمالي قبل الخصم', quantity: '', price: '', total: invoiceTotal })
+      : null
+    const discountRow = printDiscount && discount
+      ? worksheet.addRow({
+        order: '',
+        name: discount.mode === 'percentage' ? `الخصم (${discount.value}%)` : 'قيمة الخصم',
+        quantity: '',
+        price: '',
+        total: -discountAmount,
+      })
+      : null
     const totalRow = worksheet.addRow({
       order: '',
       name: 'الإجمالي النهائي',
@@ -2738,19 +2844,26 @@ async function exportInvoiceToExcel(
       const isTitle = rowNumber === titleRow.number
       const isInvoiceNumber = rowNumber === invoiceNumberRow.number
       const isCustomerOrganizer = rowNumber === customerOrganizerRow.number
+      const isBeforeDiscount = rowNumber === beforeDiscountRow?.number
+      const isDiscount = rowNumber === discountRow?.number
       const isHeader = rowNumber === headerRow.number
       const isTotal = rowNumber === totalRow.number
       row.height = isTitle ? 30 : isCustomerOrganizer ? 28 : 24
       row.eachCell({ includeEmpty: true }, (cell) => {
         cell.alignment = { horizontal: isTitle || isCustomerOrganizer ? 'center' : isInvoiceNumber ? 'left' : 'right', vertical: 'middle' }
         if (!isCustomerOrganizer) {
-          cell.font = { name: 'Arial', size: isTitle ? 16 : isHeader || isTotal ? 12 : 11, bold: isTitle || isHeader || isTotal, color: { argb: isHeader ? 'FFFFFFFF' : isTitle ? 'FF007D79' : isInvoiceNumber ? 'FFC62828' : 'FF203044' } }
+          cell.font = { name: 'Arial', size: isTitle ? 16 : isHeader || isTotal || isBeforeDiscount || isDiscount ? 12 : 11, bold: isTitle || isHeader || isTotal || isBeforeDiscount || isDiscount, color: { argb: isHeader ? 'FFFFFFFF' : isTitle ? 'FF007D79' : isDiscount ? 'FFC62828' : isInvoiceNumber ? 'FFC62828' : 'FF203044' } }
         }
         if (isTitle) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7F9' } }
         if (isHeader) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007D79' } }
+        if (isBeforeDiscount) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF6E5' } }
+        if (isDiscount) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEFED' } }
         if (isTotal) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE4F3F0' } }
       })
     })
+    const totalAmountCell = worksheet.getCell(`E${totalRow.number}`)
+    const redBorder = { style: 'medium' as const, color: { argb: 'FFC62828' } }
+    totalAmountCell.border = { top: redBorder, right: redBorder, bottom: redBorder, left: redBorder }
     worksheet.getCell(`A${customerOrganizerRow.number}`).alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true, wrapText: false }
     worksheet.getColumn('price').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
     worksheet.getColumn('total').numFmt = currency === 'syp' ? '#,##0 "ل.س"' : '$#,##0.00'
@@ -2780,6 +2893,7 @@ async function exportInvoiceToImage(
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
   organizerName: string,
+  discount: InvoiceDiscount | null,
   currency: 'usd' | 'syp',
   getInvoiceNumber: () => Promise<string>,
 ) {
@@ -2798,6 +2912,10 @@ async function exportInvoiceToImage(
       showToast('لا توجد أصناف صالحة للتصدير.')
       return
     }
+    const invoiceTotal = rows.reduce((total, row) => total + row.total, 0)
+    const discountAmount = discount?.amount || 0
+    const finalTotal = invoiceTotal - discountAmount
+    const printDiscount = Boolean(discount?.amount && discount.printOnInvoice)
     const invoiceNumber = await getInvoiceNumber()
     const productsPerImage = 15
     const pageCount = Math.ceil(rows.length / productsPerImage)
@@ -2821,7 +2939,6 @@ async function exportInvoiceToImage(
     ]
     const formatAmount = (value: number) => currency === 'syp' ? `${syp(value)} ل.س` : `${money(value)} $`
     const totalPieces = rows.reduce((total, row) => total + row.quantity, 0)
-    const invoiceTotal = rows.reduce((total, row) => total + row.total, 0)
     const measureCanvas = document.createElement('canvas')
     const measureContext = measureCanvas.getContext('2d')
     if (!measureContext) throw new Error('Canvas 2D context is unavailable')
@@ -2855,7 +2972,7 @@ async function exportInvoiceToImage(
       const subtotalTop = tableTop + headerHeight + rowsHeight
       const summaryTop = subtotalTop + subtotalHeight + 24
       const isLastPage = pageIndex === pageCount - 1
-      const height = summaryTop + 106
+      const height = summaryTop + (printDiscount ? 202 : 106)
       canvas.width = width
       canvas.height = height
       context.fillStyle = '#ffffff'
@@ -2889,8 +3006,8 @@ async function exportInvoiceToImage(
       }
       const invoiceInfoParts: { text: string; color: string; bold: boolean; reserveName?: boolean }[] = [
         { text: 'الزبون:', color: '#203044', bold: false },
-        { text: customerName, color: '#007d79', bold: true, reserveName: true },
-        ...(customerName ? [{ text: 'المحترم', color: '#203044', bold: false }] : []),
+        { text: customerName, color: '#c62828', bold: true, reserveName: true },
+        { text: 'المحترم', color: '#203044', bold: false },
         { text: ' | ', color: '#203044', bold: false },
         { text: 'منظم الفاتورة:', color: '#c62828', bold: true },
         { text: organizerName, color: '#c62828', bold: true, reserveName: true },
@@ -2990,24 +3107,76 @@ async function exportInvoiceToImage(
       context.fillText(formatAmount(pageTotal), columnEdges[1] - 14, subtotalTop + subtotalHeight / 2, columnEdges[1] - columnEdges[0] - 20)
       if (isLastPage) {
         const cardGap = 14
-        const cardWidth = (rightEdge - margin - cardGap * 2) / 3
-        const summaryCards = [
-          { label: 'إجمالي الأصناف', value: String(rows.length) },
-          { label: 'إجمالي القطع', value: String(totalPieces) },
-          { label: 'الإجمالي النهائي', value: formatAmount(invoiceTotal) },
-        ]
-        summaryCards.forEach((card, index) => {
-          const x = rightEdge - cardWidth - index * (cardWidth + cardGap)
-          context.fillStyle = index === 2 ? '#e4f3f0' : '#007d79'
-          context.fillRect(x, summaryTop, cardWidth, 82)
+        const hasPrintedDiscount = printDiscount && discount !== null
+        const drawSummaryCard = (
+          card: { label: string; value: string; fill: string; color: string; outlineAmount?: boolean },
+          x: number,
+          y: number,
+          cardWidth: number,
+        ) => {
+          context.fillStyle = card.fill
+          context.fillRect(x, y, cardWidth, 82)
           context.direction = 'rtl'
           context.textAlign = 'center'
-          context.fillStyle = index === 2 ? '#007d79' : '#ffffff'
+          context.fillStyle = card.color
           context.font = '18px Arial, sans-serif'
-          context.fillText(card.label, x + cardWidth / 2, summaryTop + 26)
+          context.fillText(card.label, x + cardWidth / 2, y + 26, cardWidth - 20)
           context.font = 'bold 24px Arial, sans-serif'
-          context.fillText(card.value, x + cardWidth / 2, summaryTop + 59)
+          const valueX = x + cardWidth / 2
+          const valueY = y + 59
+          const valueMaxWidth = cardWidth - 24
+          context.fillText(card.value, valueX, valueY, valueMaxWidth)
+          if (card.outlineAmount) {
+            const outlineWidth = Math.min(context.measureText(card.value).width, valueMaxWidth) + 16
+            context.strokeStyle = '#c62828'
+            context.lineWidth = 2.5
+            context.strokeRect(valueX - outlineWidth / 2, valueY - 23, outlineWidth, 32)
+          }
+        }
+        const topCards = hasPrintedDiscount
+          ? [
+            { label: 'إجمالي الأصناف', value: String(rows.length), fill: '#007d79', color: '#ffffff' },
+            { label: 'إجمالي القطع', value: String(totalPieces), fill: '#007d79', color: '#ffffff' },
+          ]
+          : [
+            { label: 'إجمالي الأصناف', value: String(rows.length), fill: '#007d79', color: '#ffffff' },
+            { label: 'إجمالي القطع', value: String(totalPieces), fill: '#007d79', color: '#ffffff' },
+            { label: 'الإجمالي النهائي', value: formatAmount(finalTotal), fill: '#e4f3f0', color: '#007d79', outlineAmount: true },
+          ]
+        const topCardWidth = (rightEdge - margin - cardGap * (topCards.length - 1)) / topCards.length
+        topCards.forEach((card, index) => {
+          const x = rightEdge - topCardWidth - index * (topCardWidth + cardGap)
+          drawSummaryCard(card, x, summaryTop, topCardWidth)
         })
+        if (printDiscount && discount) {
+          const discountTop = summaryTop + 94
+          const discountCardWidth = (rightEdge - margin - cardGap * 2) / 3
+          const discountCards = [
+            {
+              label: 'الإجمالي قبل الخصم',
+              value: formatAmount(invoiceTotal),
+              x: rightEdge - discountCardWidth,
+              fill: '#e4f3f0',
+              color: '#007d79',
+            },
+            {
+              label: discount.mode === 'percentage' ? `قيمة الخصم (${discount.value}%)` : 'قيمة الخصم',
+              value: formatAmount(discountAmount),
+              x: rightEdge - discountCardWidth * 2 - cardGap,
+              fill: '#fff0ed',
+              color: '#c62828',
+            },
+            {
+              label: 'الإجمالي بعد الخصم',
+              value: formatAmount(finalTotal),
+              x: margin,
+              fill: '#e4f3f0',
+              color: '#007d79',
+              outlineAmount: true,
+            },
+          ]
+          discountCards.forEach((card) => drawSummaryCard(card, card.x, discountTop, discountCardWidth))
+        }
       }
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((result) => {

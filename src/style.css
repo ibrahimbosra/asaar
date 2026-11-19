@@ -642,16 +642,45 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-customer-export-dialog > label span,
 .invoice-customer-export-dialog > p { color: var(--muted); font-size: 11px; font-weight: 500; }
 .invoice-customer-export-dialog input { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px; }
-.invoice-export-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.invoice-export-summary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
 .invoice-export-summary > div { display: grid; min-width: 0; align-content: center; gap: 5px; border-radius: 9px; background: #f1f4f5; padding: 9px 5px; text-align: center; }
+.invoice-export-summary .invoice-export-count-card { grid-column: span 3; }
+.invoice-export-summary:not(.has-discount) .invoice-export-total-card { grid-column: span 6; }
+.invoice-export-summary.has-discount .invoice-export-total-card,
+.invoice-export-summary.has-discount .invoice-export-discount-card,
+.invoice-export-summary.has-discount .invoice-export-final-card { grid-column: span 2; }
+.invoice-export-summary > div[hidden] { display: none; }
 .invoice-export-summary span { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .invoice-export-summary strong { color: var(--ink); font-size: 12px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
 .invoice-export-summary bdi { direction: ltr; unicode-bidi: isolate; }
-.invoice-export-format { display: grid; gap: 8px; margin: 16px 0 8px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-.invoice-export-format legend { padding: 0 5px; color: var(--ink); font-size: 12px; font-weight: 800; }
-.invoice-export-format label { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 700; }
-.invoice-export-format input[type="radio"] { width: 18px; min-height: 18px; margin: 0; accent-color: var(--teal); }
+.invoice-export-summary .invoice-export-total-card { background: #e3f1ef; }
+.invoice-export-summary .invoice-export-total-card strong { color: var(--teal); }
+.invoice-export-summary .invoice-export-discount-card { background: #fff0ed; }
+.invoice-export-summary .invoice-export-discount-card strong { color: #c62828; }
+.invoice-export-summary .invoice-export-final-card { box-sizing: border-box; border: 2px solid #c62828; background: #e3f1ef; }
+.invoice-export-summary .invoice-export-final-card strong { color: var(--teal); }
+.invoice-export-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: stretch; gap: 8px; margin-top: 12px; }
+.invoice-export-format, .invoice-discount-options { display: grid; align-content: start; gap: 7px; min-width: 0; box-sizing: border-box; margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px 6px; }
+.invoice-export-format { width: max-content; max-width: 100%; }
+.invoice-export-format legend, .invoice-discount-options legend { padding: 0 4px; color: var(--ink); font-size: 11px; font-weight: 800; }
+.invoice-discount-option { display: grid; grid-template-columns: minmax(0, 1fr) minmax(64px, 112px); align-items: center; gap: 4px; min-width: 0; }
+.invoice-discount-option > button { min-width: 0; min-height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #f3f6f7; color: var(--muted); padding: 4px 3px; font-size: 11px; font-weight: 800; line-height: 1.3; }
+.invoice-discount-option > button.is-active { border-color: var(--teal); background: var(--teal); color: #fff; }
+.invoice-discount-value { position: relative; display: block; width: 100%; min-width: 0; }
+.invoice-discount-value input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; border-radius: 8px; padding: 5px 4px 5px 28px; direction: ltr; text-align: center; font-size: 12px; }
+.invoice-discount-value input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.invoice-discount-value input[type="number"]::-webkit-inner-spin-button,
+.invoice-discount-value input[type="number"]::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; }
+.invoice-discount-value input:disabled { background: #f3f6f7; color: var(--muted); }
+.invoice-discount-value span { position: absolute; top: 50%; left: 6px; transform: translateY(-50%); color: var(--muted); font-size: 10px; pointer-events: none; }
+.invoice-export-format label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.invoice-export-format input[type="radio"] { width: 18px; min-height: 18px; flex: 0 0 18px; margin: 0; accent-color: var(--teal); }
 .invoice-customer-export-dialog > p { margin: 10px 0 0; }
+.invoice-export-footer-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.invoice-export-footer-row > p { margin: 0; }
+.invoice-print-discount { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: var(--ink); font-size: 11px; white-space: nowrap; }
+.invoice-print-discount input { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: var(--teal); }
+.invoice-print-discount[hidden] { display: none; }
 .invoice-customer-export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
 .invoice-customer-export-actions button { min-height: 44px; }
 .invoice-customer-export-close { position: absolute; top: 16px; left: 16px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: #f3f6f7; color: var(--muted); }
@@ -857,9 +886,23 @@ body.dark-mode .invoice-customer-export-dialog h3,
 body.dark-mode .invoice-customer-export-dialog > label { color: #e6edf3; }
 body.dark-mode .invoice-export-summary > div { background: #202d37; }
 body.dark-mode .invoice-export-summary strong { color: #e6edf3; }
+body.dark-mode .invoice-export-summary .invoice-export-total-card { background: #193b3a; }
+body.dark-mode .invoice-export-summary .invoice-export-total-card strong { color: #7de0d3; }
+body.dark-mode .invoice-export-summary .invoice-export-discount-card { background: #482a2c; }
+body.dark-mode .invoice-export-summary .invoice-export-discount-card strong { color: #ffaaa1; }
+body.dark-mode .invoice-export-summary .invoice-export-final-card { border-color: #ff6b61; background: #193b3a; }
+body.dark-mode .invoice-export-summary .invoice-export-final-card strong { color: #7de0d3; }
+body.dark-mode .invoice-discount-option > button { border-color: #2b3b49; background: #202d37; color: #aab8c5; }
+body.dark-mode .invoice-discount-option > button.is-active { border-color: #3d7773; background: var(--teal); color: #fff; }
+body.dark-mode .invoice-customer-export-dialog .invoice-discount-value input { min-height: 40px; border-color: #2b3b49; background: #111b24; color: #e6edf3; }
+body.dark-mode .invoice-customer-export-dialog .invoice-discount-value input:disabled { background: #202d37; color: #718096; }
+body.dark-mode .invoice-print-discount { color: #e6edf3; }
+body.dark-mode .invoice-customer-export-dialog .invoice-print-discount input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; }
 body.dark-mode .invoice-customer-export-dialog input { border-color: #2b3b49; background: #111b24; color: #e6edf3; }
-body.dark-mode .invoice-export-format { border-color: #2b3b49; }
+body.dark-mode .invoice-export-format,
+body.dark-mode .invoice-discount-options { border-color: #2b3b49; }
 body.dark-mode .invoice-export-format legend,
+body.dark-mode .invoice-discount-options legend,
 body.dark-mode .invoice-export-format label { color: #e6edf3; }
 body.dark-mode .invoice-customer-export-close { background: #253441; color: #aab8c5; }
 body.dark-mode .invoice-summary div { background: #202d37; }
