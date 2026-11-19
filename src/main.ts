@@ -1834,7 +1834,7 @@ function renderInvoiceModal() {
     })
     document.addEventListener('keydown', handleEditorKeydown)
     document.body.append(editor)
-    usdInput.focus()
+    editor.querySelector<HTMLButtonElement>('.invoice-price-editor-close')!.focus()
   }
   const openCustomerExportDialog = (button: HTMLButtonElement, currency: 'usd' | 'syp') => {
     if (!quantities.size) {
