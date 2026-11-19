@@ -2107,6 +2107,7 @@ function renderInvoiceModal() {
       const price = unitPrice(product)
       const unpriced = price === null
       const isExactSearchMatch = Boolean(term) && product.name.trim().toLocaleLowerCase('ar') === term
+      const hasPriceOverride = Boolean(priceOverrides.get(product.id)?.wholesale || priceOverrides.get(product.id)?.retail)
       const secondaryAmount = unitSypPrice(product)
       const secondaryPrice = secondaryAmount !== null && settings.syriaEnabled && settings.exchangeRate > 0
         ? `<span class="invoice-product-secondary-price"><bdi class="invoice-product-secondary-amount" dir="ltr">${syp(secondaryAmount)}</bdi><span class="invoice-product-secondary-currency">ل.س</span></span>`
@@ -2126,7 +2127,7 @@ function renderInvoiceModal() {
             </div>
             <input class="invoice-quantity" type="number" min="1" step="1" inputmode="numeric" data-invoice-quantity="${product.id}" value="${quantity || 1}" ${quantity ? '' : 'disabled'} aria-label="كمية ${escapeHtml(product.name)}">
           </div>
-          ${quantity ? `<button type="button" class="invoice-price-edit invoice-price-edit-corner" data-invoice-price-edit="${product.id}" aria-label="تعديل سعر ${escapeHtml(product.name)}" title="تعديل سعر الفاتورة">${svg('edit')}</button>` : ''}
+          ${quantity ? `<button type="button" class="invoice-price-edit invoice-price-edit-corner ${hasPriceOverride ? 'has-price-override' : ''}" data-invoice-price-edit="${product.id}" aria-label="تعديل سعر ${escapeHtml(product.name)}" title="${hasPriceOverride ? 'تم تعديل سعر المنتج في هذه الفاتورة' : 'تعديل سعر الفاتورة'}">${svg('edit')}</button>` : ''}
           ${selectedNumber ? `<span class="invoice-product-number">${selectedNumber}</span>` : ''}
         </div>
       `
@@ -2231,16 +2232,24 @@ function renderInvoiceModal() {
     const currentUsd = unitPrice(product)
     const hasExchangeRate = settings.syriaEnabled && Number.isFinite(settings.exchangeRate) && settings.exchangeRate > 0
     const currentSyp = hasExchangeRate ? unitSypPrice(product) : null
+    let editorMode: 'adjust' | 'correct' = 'correct'
+    let lastEditedCurrency: 'usd' | 'syp' | null = null
     const editor = document.createElement('div')
     editor.className = 'invoice-price-editor-backdrop'
     editor.innerHTML = `
         <section class="invoice-price-editor" role="dialog" aria-modal="true" aria-labelledby="invoice-price-editor-title">
           <button type="button" class="invoice-price-editor-close" aria-label="إغلاق">${svg('close')}</button>
-          <h3 id="invoice-price-editor-title">تعديل سعر الفاتورة</h3>
+          <h3 id="invoice-price-editor-title">سعر المنتج في الفاتورة</h3>
           <p class="invoice-price-editor-product">${escapeHtml(product.name)}</p>
-          <label>السعر بالدولار<input class="invoice-edit-usd" type="number" min="0.01" step="0.01" inputmode="decimal" value="${currentUsd === null ? '' : currentUsd}"></label>
-          <label>السعر بالليرة السورية<input class="invoice-edit-syp" type="number" min="1" step="1" inputmode="numeric" value="${currentSyp === null ? '' : currentSyp}" ${hasExchangeRate ? '' : 'disabled'}></label>
-          <p class="invoice-price-editor-note">${hasExchangeRate ? 'يمكن تعديل أي من السعرين وسيتم تحديث السعر الآخر حسب سعر الصرف.' : 'فعّل الليرة وأدخل سعر الصرف من الإعدادات لتعديل السعر بالليرة.'} هذا التعديل خاص بهذه الفاتورة فقط ولا يغيّر السعر الأساسي المحفوظ للمنتج.</p>
+          <div class="invoice-price-editor-tabs" role="tablist" aria-label="طريقة تعديل السعر">
+            <button type="button" id="invoice-price-mode-correct" class="active" role="tab" aria-selected="true" aria-controls="invoice-price-editor-panel">تصحيح سعر منتج</button>
+            <button type="button" id="invoice-price-mode-adjust" role="tab" aria-selected="false" aria-controls="invoice-price-editor-panel">تعديل سعر المنتج</button>
+          </div>
+          <div class="invoice-price-editor-panel" id="invoice-price-editor-panel" role="tabpanel" aria-labelledby="invoice-price-mode-correct">
+            <p class="invoice-price-editor-note" id="invoice-price-editor-note"></p>
+            <label>السعر بالدولار<input class="invoice-edit-usd" type="number" min="0.01" step="0.01" inputmode="decimal" value="${currentUsd === null ? '' : currentUsd}"></label>
+            <label>السعر بالليرة السورية<input class="invoice-edit-syp" type="number" min="1" step="1" inputmode="numeric" value="${currentSyp === null ? '' : currentSyp}" ${hasExchangeRate ? '' : 'disabled'}></label>
+          </div>
           <p class="invoice-price-editor-error" role="status" aria-live="polite"></p>
           <div class="invoice-price-editor-actions">
             <button type="button" class="secondary-button invoice-price-editor-cancel">إلغاء</button>
@@ -2251,6 +2260,51 @@ function renderInvoiceModal() {
     const usdInput = editor.querySelector<HTMLInputElement>('.invoice-edit-usd')!
     const sypInput = editor.querySelector<HTMLInputElement>('.invoice-edit-syp')!
     const error = editor.querySelector<HTMLElement>('.invoice-price-editor-error')!
+    const modeNote = editor.querySelector<HTMLElement>('#invoice-price-editor-note')!
+    const priceEditorPanel = editor.querySelector<HTMLElement>('#invoice-price-editor-panel')!
+    const modeTabs = [...editor.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    const describeMode = (mode: 'adjust' | 'correct') => {
+      if (mode === 'adjust') {
+        return hasExchangeRate
+          ? 'عند تعديل أحد السعرين، يُحدّث السعر الآخر تلقائيًا حسب سعر الصرف. التغيير خاص بهذه الفاتورة ولا يغيّر السعر الأصلي للمنتج.'
+          : 'عدّل السعر بالدولار لهذه الفاتورة فقط. لتعديل سعر الليرة، فعّلها وأدخل سعر الصرف من الإعدادات.'
+      }
+      return hasExchangeRate
+        ? 'استخدم هذا الخيار لتصحيح السعر وتفادي الكسور الناتجة عن سعر الصرف. يمكنك تعديل الدولار والليرة كلًّا على حدة دون أن يغيّر أحدهما الآخر، ويُفضّل استخدامه إذا كنت ستصدر الفاتورة بالليرة السورية. مثلًا يمكنك تصحيح 35,215 إلى 35,000. التعديل خاص بهذه الفاتورة فقط.'
+        : 'استخدم هذا الخيار لتصحيح السعر وتفادي الكسور الناتجة عن سعر الصرف، وصحّح سعر الدولار يدويًا لهذه الفاتورة فقط. يُفضّل استخدامه إذا كنت ستصدر الفاتورة بالليرة السورية. لتصحيح سعر الليرة، فعّلها وأدخل سعر الصرف من الإعدادات.'
+    }
+    const syncOtherCurrency = (source: 'usd' | 'syp') => {
+      if (!hasExchangeRate) return
+      if (source === 'usd') {
+        const usd = Number(usdInput.value)
+        if (Number.isFinite(usd) && usd > 0) sypInput.value = String(Math.round(usd * settings.exchangeRate))
+        return
+      }
+      const sypPrice = Number(sypInput.value)
+      if (Number.isFinite(sypPrice) && sypPrice > 0) {
+        usdInput.value = Number((sypPrice / settings.exchangeRate).toFixed(2)).toString()
+      }
+    }
+    const setEditorMode = (mode: 'adjust' | 'correct') => {
+      editorMode = mode
+      modeTabs.forEach((tab) => {
+        const selected = tab.id === `invoice-price-mode-${mode}`
+        tab.classList.toggle('active', selected)
+        tab.setAttribute('aria-selected', String(selected))
+      })
+      priceEditorPanel.setAttribute('aria-labelledby', `invoice-price-mode-${mode}`)
+      modeNote.textContent = describeMode(mode)
+      error.textContent = ''
+      if (mode === 'adjust' && lastEditedCurrency) syncOtherCurrency(lastEditedCurrency)
+    }
+    setEditorMode(editorMode)
+    modeTabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        if (tab.id === 'invoice-price-mode-adjust' || tab.id === 'invoice-price-mode-correct') {
+          setEditorMode(tab.id === 'invoice-price-mode-adjust' ? 'adjust' : 'correct')
+        }
+      })
+    })
     const closeEditor = () => {
         document.removeEventListener('keydown', handleEditorKeydown)
         editor.remove()
@@ -2259,17 +2313,13 @@ function renderInvoiceModal() {
         if (event.key === 'Escape') closeEditor()
     }
     usdInput.addEventListener('input', () => {
-        const usd = Number(usdInput.value)
-        if (hasExchangeRate && Number.isFinite(usd) && usd > 0) {
-          sypInput.value = String(Math.round(usd * settings.exchangeRate))
-        }
+        lastEditedCurrency = 'usd'
+        if (editorMode === 'adjust') syncOtherCurrency('usd')
         error.textContent = ''
     })
     sypInput.addEventListener('input', () => {
-        const sypPrice = Number(sypInput.value)
-        if (hasExchangeRate && Number.isFinite(sypPrice) && sypPrice > 0) {
-          usdInput.value = Number((sypPrice / settings.exchangeRate).toFixed(2)).toString()
-        }
+        lastEditedCurrency = 'syp'
+        if (editorMode === 'adjust') syncOtherCurrency('syp')
         error.textContent = ''
     })
     editor.querySelector<HTMLButtonElement>('.invoice-price-editor-close')!.addEventListener('click', closeEditor)
