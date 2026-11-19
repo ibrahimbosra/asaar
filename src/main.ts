@@ -2022,66 +2022,19 @@ async function exportInvoiceToImage(
       showToast('لا توجد أصناف صالحة للتصدير.')
       return
     }
+    const productsPerImage = 15
+    const pageCount = Math.ceil(rows.length / productsPerImage)
     const width = 1200
     const margin = 36
     const rightEdge = width - margin
     const columnEdges = [margin, 280, 520, 660, 1104, rightEdge]
-    const canvas = document.createElement('canvas')
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('Canvas 2D context is unavailable')
-    context.font = '22px Arial, sans-serif'
-    context.direction = 'rtl'
-    const nameLines = rows.map(({ product }) => {
-      const words = product.name.trim().split(/\s+/)
-      const lines: string[] = []
-      let line = ''
-      words.forEach((word) => {
-        const candidate = line ? `${line} ${word}` : word
-        if (line && context.measureText(candidate).width > 410) {
-          lines.push(line)
-          line = word
-        } else {
-          line = candidate
-        }
-      })
-      if (line) lines.push(line)
-      return lines.length ? lines : ['']
-    })
-    const rowHeights = nameLines.map((lines) => Math.max(66, lines.length * 28 + 20))
     const tableTop = 218
     const headerHeight = 62
-    const rowsHeight = rowHeights.reduce((total, height) => total + height, 0)
-    const summaryTop = tableTop + headerHeight + rowsHeight + 30
-    const height = summaryTop + 112
-    if (height > 32000) {
-      showToast('الفاتورة طويلة جدًا لصورة واحدة. اختر ملف Excel بدلًا منها.')
-      return
-    }
-    canvas.width = width
-    canvas.height = height
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, width, height)
-    context.direction = 'rtl'
-    context.textAlign = 'center'
-    context.fillStyle = '#007d79'
-    context.font = 'bold 38px Arial, sans-serif'
-    context.fillText('المسالمة للدراجات النارية وقطع الغيار', width / 2, 66)
     const nowUtcPlusThree = new Date(Date.now() + (3 * 60 * 60 * 1000))
     const isoUtcPlusThree = nowUtcPlusThree.toISOString()
     const dateValue = isoUtcPlusThree.slice(0, 10).replaceAll('-', '/')
     const timeValue = isoUtcPlusThree.slice(11, 16)
     const fileTimeValue = isoUtcPlusThree.slice(11, 23).replaceAll(':', '-').replace('.', '-')
-    context.fillStyle = '#203044'
-    context.font = '20px Arial, sans-serif'
-    context.fillText(`الزبون: ${customerName || '—'}    المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, width / 2, 125)
-    context.strokeStyle = '#d7e1e4'
-    context.lineWidth = 2
-    context.beginPath()
-    context.moveTo(margin, 169)
-    context.lineTo(rightEdge, 169)
-    context.stroke()
-    context.fillStyle = '#007d79'
-    context.fillRect(margin, tableTop, rightEdge - margin, headerHeight)
     const headers = [
       { left: columnEdges[0], right: columnEdges[1], text: `الإجمالي (${currency === 'syp' ? 'ل.س' : '$'})`, align: 'right' as CanvasTextAlign },
       { left: columnEdges[1], right: columnEdges[2], text: `السعر (${currency === 'syp' ? 'ل.س' : '$'})`, align: 'right' as CanvasTextAlign },
@@ -2089,87 +2042,172 @@ async function exportInvoiceToImage(
       { left: columnEdges[3], right: columnEdges[4], text: 'الصنف', align: 'right' as CanvasTextAlign },
       { left: columnEdges[4], right: columnEdges[5], text: 'م', align: 'center' as CanvasTextAlign },
     ]
-    context.font = 'bold 20px Arial, sans-serif'
-    context.fillStyle = '#ffffff'
-    headers.forEach((header) => {
-      context.textAlign = header.align
-      const x = header.align === 'center' ? (header.left + header.right) / 2 : header.right - 14
-      context.fillText(header.text, x, tableTop + headerHeight / 2, header.right - header.left - 20)
-    })
     const formatAmount = (value: number) => currency === 'syp' ? `${syp(value)} ل.س` : `${money(value)} $`
-    let rowTop = tableTop + headerHeight
-    rows.forEach((row, index) => {
-      const rowHeight = rowHeights[index]
-      context.fillStyle = index % 2 === 0 ? '#f5f8f9' : '#ffffff'
-      context.fillRect(margin, rowTop, rightEdge - margin, rowHeight)
-      context.strokeStyle = '#d7e1e4'
-      context.lineWidth = 1
+    const totalPieces = rows.reduce((total, row) => total + row.quantity, 0)
+    const invoiceTotal = rows.reduce((total, row) => total + row.total, 0)
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+      const pageRows = rows.slice(pageIndex * productsPerImage, (pageIndex + 1) * productsPerImage)
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Canvas 2D context is unavailable')
+      context.font = '22px Arial, sans-serif'
+      context.direction = 'rtl'
+      const nameLines = pageRows.map(({ product }) => {
+        const words = product.name.trim().split(/\s+/)
+        const lines: string[] = []
+        let line = ''
+        words.forEach((word) => {
+          const candidate = line ? `${line} ${word}` : word
+          if (line && context.measureText(candidate).width > 410) {
+            lines.push(line)
+            line = word
+          } else {
+            line = candidate
+          }
+        })
+        if (line) lines.push(line)
+        return lines.length ? lines : ['']
+      })
+      const rowHeights = nameLines.map((lines) => Math.max(66, lines.length * 28 + 20))
+      const rowsHeight = rowHeights.reduce((total, height) => total + height, 0)
+      const subtotalHeight = 66
+      const subtotalTop = tableTop + headerHeight + rowsHeight
+      const summaryTop = subtotalTop + subtotalHeight + 24
+      const isLastPage = pageIndex === pageCount - 1
+      const height = isLastPage ? summaryTop + 106 : summaryTop + 24
+      canvas.width = width
+      canvas.height = height
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, width, height)
+      context.direction = 'rtl'
+      context.textAlign = 'center'
+      context.fillStyle = '#007d79'
+      context.font = 'bold 38px Arial, sans-serif'
+      context.fillText('المسالمة للدراجات النارية وقطع الغيار', width / 2, 66, 900)
       context.beginPath()
-      context.moveTo(margin, rowTop + rowHeight)
-      context.lineTo(rightEdge, rowTop + rowHeight)
+      context.arc(rightEdge - 30, 58, 28, 0, Math.PI * 2)
+      context.fillStyle = '#007d79'
+      context.fill()
+      context.strokeStyle = '#ffffff'
+      context.lineWidth = 4
       context.stroke()
+      context.direction = 'ltr'
+      context.fillStyle = '#ffffff'
+      context.font = 'bold 21px Arial, sans-serif'
+      context.fillText(String(pageIndex + 1), rightEdge - 30, 59)
+      context.direction = 'rtl'
       context.fillStyle = '#203044'
       context.font = '20px Arial, sans-serif'
-      context.textAlign = 'right'
-      context.direction = 'ltr'
-      context.fillText(formatAmount(row.total), columnEdges[1] - 14, rowTop + rowHeight / 2, columnEdges[1] - columnEdges[0] - 20)
-      context.fillText(formatAmount(row.price), columnEdges[2] - 14, rowTop + rowHeight / 2, columnEdges[2] - columnEdges[1] - 20)
-      context.textAlign = 'center'
-      context.fillText(String(row.quantity), (columnEdges[2] + columnEdges[3]) / 2, rowTop + rowHeight / 2)
-      context.direction = 'rtl'
-      context.textAlign = 'right'
-      const lines = nameLines[index]
-      const lineHeight = 28
-      const textTop = rowTop + (rowHeight - (lines.length * lineHeight)) / 2 + lineHeight / 2
-      context.save()
+      context.fillText(`الزبون: ${customerName || '—'}    المحترم  -  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, width / 2, 125)
+      context.strokeStyle = '#d7e1e4'
+      context.lineWidth = 2
       context.beginPath()
-      context.rect(columnEdges[3] + 10, rowTop, columnEdges[4] - columnEdges[3] - 20, rowHeight)
-      context.clip()
-      lines.forEach((line, lineIndex) => {
-        context.fillText(line, columnEdges[4] - 14, textTop + lineIndex * lineHeight)
+      context.moveTo(margin, 169)
+      context.lineTo(rightEdge, 169)
+      context.stroke()
+      context.fillStyle = '#007d79'
+      context.fillRect(margin, tableTop, rightEdge - margin, headerHeight)
+      context.font = 'bold 20px Arial, sans-serif'
+      context.fillStyle = '#ffffff'
+      headers.forEach((header) => {
+        context.textAlign = header.align
+        const x = header.align === 'center' ? (header.left + header.right) / 2 : header.right - 14
+        context.fillText(header.text, x, tableTop + headerHeight / 2, header.right - header.left - 20)
       })
-      context.restore()
-      context.textAlign = 'center'
-      context.direction = 'ltr'
-      context.fillText(String(index + 1), (columnEdges[4] + columnEdges[5]) / 2, rowTop + rowHeight / 2)
-      rowTop += rowHeight
-    })
-    const pieces = rows.reduce((total, row) => total + row.quantity, 0)
-    const finalTotal = rows.reduce((total, row) => total + row.total, 0)
-    const cardGap = 14
-    const cardWidth = (rightEdge - margin - cardGap * 2) / 3
-    const summaryCards = [
-      { label: 'عدد الأصناف', value: String(rows.length) },
-      { label: 'عدد القطع', value: String(pieces) },
-      { label: 'الإجمالي النهائي', value: formatAmount(finalTotal) },
-    ]
-    summaryCards.forEach((card, index) => {
-      const x = rightEdge - cardWidth - index * (cardWidth + cardGap)
-      context.fillStyle = index === 2 ? '#e4f3f0' : '#007d79'
-      context.fillRect(x, summaryTop, cardWidth, 82)
+      let rowTop = tableTop + headerHeight
+      pageRows.forEach((row, index) => {
+        const rowHeight = rowHeights[index]
+        context.fillStyle = index % 2 === 0 ? '#f5f8f9' : '#ffffff'
+        context.fillRect(margin, rowTop, rightEdge - margin, rowHeight)
+        context.strokeStyle = '#d7e1e4'
+        context.lineWidth = 1
+        context.beginPath()
+        context.moveTo(margin, rowTop + rowHeight)
+        context.lineTo(rightEdge, rowTop + rowHeight)
+        context.stroke()
+        context.fillStyle = '#203044'
+        context.font = '20px Arial, sans-serif'
+        context.textAlign = 'right'
+        context.direction = 'ltr'
+        context.fillText(formatAmount(row.total), columnEdges[1] - 14, rowTop + rowHeight / 2, columnEdges[1] - columnEdges[0] - 20)
+        context.fillText(formatAmount(row.price), columnEdges[2] - 14, rowTop + rowHeight / 2, columnEdges[2] - columnEdges[1] - 20)
+        context.textAlign = 'center'
+        context.fillText(String(row.quantity), (columnEdges[2] + columnEdges[3]) / 2, rowTop + rowHeight / 2)
+        context.direction = 'rtl'
+        context.textAlign = 'right'
+        const lines = nameLines[index]
+        const lineHeight = 28
+        const textTop = rowTop + (rowHeight - (lines.length * lineHeight)) / 2 + lineHeight / 2
+        context.save()
+        context.beginPath()
+        context.rect(columnEdges[3] + 10, rowTop, columnEdges[4] - columnEdges[3] - 20, rowHeight)
+        context.clip()
+        lines.forEach((line, lineIndex) => {
+          context.fillText(line, columnEdges[4] - 14, textTop + lineIndex * lineHeight)
+        })
+        context.restore()
+        context.textAlign = 'center'
+        context.direction = 'ltr'
+        context.fillText(String(pageIndex * productsPerImage + index + 1), (columnEdges[4] + columnEdges[5]) / 2, rowTop + rowHeight / 2)
+        rowTop += rowHeight
+      })
+      const pageTotal = pageRows.reduce((total, row) => total + row.total, 0)
+      context.fillStyle = '#e4f3f0'
+      context.fillRect(margin, subtotalTop, rightEdge - margin, subtotalHeight)
+      context.strokeStyle = '#007d79'
+      context.lineWidth = 2
+      context.beginPath()
+      context.moveTo(margin, subtotalTop)
+      context.lineTo(rightEdge, subtotalTop)
+      context.stroke()
+      context.fillStyle = '#007d79'
+      context.font = 'bold 22px Arial, sans-serif'
       context.direction = 'rtl'
-      context.textAlign = 'center'
-      context.fillStyle = index === 2 ? '#007d79' : '#ffffff'
-      context.font = '18px Arial, sans-serif'
-      context.fillText(card.label, x + cardWidth / 2, summaryTop + 26)
-      context.font = 'bold 24px Arial, sans-serif'
-      context.fillText(card.value, x + cardWidth / 2, summaryTop + 59)
-    })
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((result) => {
-        if (result) resolve(result)
-        else reject(new Error('Failed to create invoice image'))
-      }, 'image/png')
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}.png`
-    document.body.append(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    showToast('تم تصدير الفاتورة كصورة بنجاح.')
+      context.textAlign = 'right'
+      context.fillText('إجمالي هذه الصفحة', columnEdges[4] - 14, subtotalTop + subtotalHeight / 2)
+      context.direction = 'ltr'
+      context.textAlign = 'right'
+      context.fillText(formatAmount(pageTotal), columnEdges[1] - 14, subtotalTop + subtotalHeight / 2, columnEdges[1] - columnEdges[0] - 20)
+      if (isLastPage) {
+        const cardGap = 14
+        const cardWidth = (rightEdge - margin - cardGap * 2) / 3
+        const summaryCards = [
+          { label: 'إجمالي الأصناف', value: String(rows.length) },
+          { label: 'إجمالي القطع', value: String(totalPieces) },
+          { label: 'الإجمالي النهائي', value: formatAmount(invoiceTotal) },
+        ]
+        summaryCards.forEach((card, index) => {
+          const x = rightEdge - cardWidth - index * (cardWidth + cardGap)
+          context.fillStyle = index === 2 ? '#e4f3f0' : '#007d79'
+          context.fillRect(x, summaryTop, cardWidth, 82)
+          context.direction = 'rtl'
+          context.textAlign = 'center'
+          context.fillStyle = index === 2 ? '#007d79' : '#ffffff'
+          context.font = '18px Arial, sans-serif'
+          context.fillText(card.label, x + cardWidth / 2, summaryTop + 26)
+          context.font = 'bold 24px Arial, sans-serif'
+          context.fillText(card.value, x + cardWidth / 2, summaryTop + 59)
+        })
+      }
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => {
+          if (result) resolve(result)
+          else reject(new Error(`Failed to create invoice image page ${pageIndex + 1}`))
+        }, 'image/png')
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `فاتورة-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}-صفحة-${pageIndex + 1}-من-${pageCount}.png`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      if (pageIndex < pageCount - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250))
+      }
+    }
+    showToast(`تم تصدير ${pageCount} صورة للفاتورة بنجاح.`)
   } catch (error) {
     console.error('Failed to export invoice image:', error)
     showToast('تعذر تصدير الفاتورة كصورة. حاول مجددًا.')
