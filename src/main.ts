@@ -1654,9 +1654,11 @@ function renderInvoiceModal() {
             <div class="invoice-product-price-values">${unpriced ? '<span class="invoice-product-price">غير مسعر</span>' : `<span class="invoice-product-price">${money(price)}$</span>${secondaryPrice}`}</div>
           </div>
           <div class="invoice-quantity-controls" dir="ltr">
-            <button type="button" class="invoice-quantity-step" data-invoice-quantity-step="down" aria-label="إنقاص كمية ${escapeHtml(product.name)}" ${quantity > 1 ? '' : 'disabled'}>${svg('arrowDown')}</button>
+            <div class="invoice-quantity-step-stack">
+              <button type="button" class="invoice-quantity-step" data-invoice-quantity-step="up" aria-label="زيادة كمية ${escapeHtml(product.name)}" ${quantity ? '' : 'disabled'}>${svg('arrowUp')}</button>
+              <button type="button" class="invoice-quantity-step" data-invoice-quantity-step="down" aria-label="إنقاص كمية ${escapeHtml(product.name)}" ${quantity > 1 ? '' : 'disabled'}>${svg('arrowDown')}</button>
+            </div>
             <input class="invoice-quantity" type="number" min="1" step="1" inputmode="numeric" data-invoice-quantity="${product.id}" value="${quantity || 1}" ${quantity ? '' : 'disabled'} aria-label="كمية ${escapeHtml(product.name)}">
-            <button type="button" class="invoice-quantity-step" data-invoice-quantity-step="up" aria-label="زيادة كمية ${escapeHtml(product.name)}" ${quantity ? '' : 'disabled'}>${svg('arrowUp')}</button>
           </div>
           ${quantity ? `<button type="button" class="invoice-price-edit invoice-price-edit-corner" data-invoice-price-edit="${product.id}" aria-label="تعديل سعر ${escapeHtml(product.name)}" title="تعديل سعر الفاتورة">${svg('edit')}</button>` : ''}
           ${selectedNumber ? `<span class="invoice-product-number">${selectedNumber}</span>` : ''}
