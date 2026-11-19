@@ -817,6 +817,8 @@ body.dark-mode .bulk-name-error.is-table-duplicate { background: #493d20; color:
 @media (max-width: 480px) {
   .settings-tabs { gap: 2px; }
   .settings-tabs button { min-width: 0; padding: 6px 1px; font-size: 10px; white-space: nowrap; }
+  .invoice-customer-export-dialog #invoice-customer-export-name::placeholder,
+  .invoice-customer-export-dialog #invoice-organizer-export-name::placeholder { font-size: 10px; }
   .invoice-product-name { font-size: 12px; }
   .modal:has(.invoice-modal) { padding: 16px 10px 10px; }
   .invoice-product-list { padding-right: 12px; padding-left: 6px; }

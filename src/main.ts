@@ -2563,6 +2563,7 @@ function renderInvoiceModal() {
           <fieldset class="invoice-export-format">
             <legend>نوع التصدير</legend>
             <label><input type="radio" name="invoice-export-format" value="image" checked> صورة PNG</label>
+            <label><input type="radio" name="invoice-export-format" value="image-high" aria-label="صورة فائقة الجودة"> صورة فائقة</label>
             <label><input type="radio" name="invoice-export-format" value="excel"> ملف Excel</label>
           </fieldset>
           <fieldset class="invoice-discount-options">
@@ -2675,8 +2676,11 @@ function renderInvoiceModal() {
       const discount = activeDiscount ? { ...activeDiscount, printOnInvoice: printDiscountInput.checked } : null
       const format = backdrop.querySelector<HTMLInputElement>('input[name="invoice-export-format"]:checked')!.value
       closeDialog()
-      const exportInvoice = format === 'image' ? exportInvoiceToImage : exportInvoiceToExcel
-      void exportInvoice(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, discount, currency, getInvoiceNumber)
+      if (format === 'excel') {
+        void exportInvoiceToExcel(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, discount, currency, getInvoiceNumber)
+      } else {
+        void exportInvoiceToImage(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, discount, currency, getInvoiceNumber, format === 'image-high' ? 2 : 1)
+      }
     })
     backdrop.addEventListener('click', (event) => {
       if (event.target === backdrop) closeDialog()
@@ -2896,6 +2900,7 @@ async function exportInvoiceToImage(
   discount: InvoiceDiscount | null,
   currency: 'usd' | 'syp',
   getInvoiceNumber: () => Promise<string>,
+  imageScale: 1 | 2,
 ) {
   if (!quantities.size) {
     showToast('اختر صنفًا واحدًا على الأقل.')
@@ -2973,8 +2978,9 @@ async function exportInvoiceToImage(
       const summaryTop = subtotalTop + subtotalHeight + 24
       const isLastPage = pageIndex === pageCount - 1
       const height = summaryTop + (printDiscount ? 202 : 106)
-      canvas.width = width
-      canvas.height = height
+      canvas.width = width * imageScale
+      canvas.height = height * imageScale
+      context.scale(imageScale, imageScale)
       context.fillStyle = '#ffffff'
       context.fillRect(0, 0, width, height)
       context.direction = 'rtl'
@@ -3188,7 +3194,8 @@ async function exportInvoiceToImage(
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `فاتورة-${invoiceNumber}-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}-صفحة-${pageIndex + 1}-من-${pageCount}.png`
+      const qualitySuffix = imageScale === 2 ? '-فائقة-الجودة' : ''
+      link.download = `فاتورة-${invoiceNumber}-${invoiceType === 'retail' ? 'مفرق' : 'جملة'}-${currency === 'syp' ? 'ليرة' : 'دولار'}-${dateValue.replaceAll('/', '-')}-${fileTimeValue}${qualitySuffix}-صفحة-${pageIndex + 1}-من-${pageCount}.png`
       document.body.append(link)
       link.click()
       link.remove()
