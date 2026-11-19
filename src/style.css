@@ -561,7 +561,7 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-product-select { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
 .invoice-product-select input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 18px; accent-color: var(--teal); }
 .invoice-product-number { position: absolute; top: 50%; right: -15px; z-index: 1; display: grid; width: 30px; height: 30px; transform: translateY(-50%); place-items: center; border: 2px solid var(--white); border-radius: 50%; background: var(--teal); color: #fff; font-size: 12px; font-weight: 800; line-height: 1; }
-.invoice-product-name { min-width: 0; color: var(--ink); font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
+.invoice-product-name { min-width: 0; overflow: hidden; color: var(--ink); font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .invoice-product-name .search-highlight { background: transparent; color: inherit; border-radius: 0; padding: 0; text-decoration: underline; text-decoration-color: #ffed9e; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .invoice-product-prices { display: flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; }
 .invoice-product-price-values { display: grid; justify-items: end; gap: 2px; }
@@ -729,6 +729,7 @@ body.dark-mode .bulk-product-row.is-table-duplicate td { background: #382f1d; }
 body.dark-mode .bulk-name-error.is-saved-duplicate { background: #482a2c; color: #ffaaa1; }
 body.dark-mode .bulk-name-error.is-table-duplicate { background: #493d20; color: #ffe080; }
 @media (max-width: 480px) {
+  .invoice-product-name { font-size: 10px; }
   .modal:has(.bulk-product-form) { width: calc(100% - 24px); height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); padding: 16px 10px 10px; }
   .bulk-product-form h2 { margin-bottom: 8px; font-size: 16px; }
   .add-mode-tabs { margin-bottom: 9px; }

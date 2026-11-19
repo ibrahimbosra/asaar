@@ -1648,7 +1648,7 @@ function renderInvoiceModal() {
         <div class="invoice-product-row ${quantity ? 'is-selected' : ''} ${unpriced ? 'is-unpriced' : ''}">
           <label class="invoice-product-select">
             <input type="checkbox" data-invoice-product="${product.id}" ${quantity ? 'checked' : ''} ${unpriced ? 'disabled' : ''}>
-            <span class="invoice-product-name">${highlightProductName(product.name, term)}</span>
+            <span class="invoice-product-name" title="${escapeHtml(product.name)}">${highlightProductName(product.name, term)}</span>
           </label>
           <div class="invoice-product-prices">
             <div class="invoice-product-price-values">${unpriced ? '<span class="invoice-product-price">غير مسعر</span>' : `<span class="invoice-product-price">${money(price)}$</span>${secondaryPrice}`}</div>
