@@ -489,7 +489,7 @@ function cancelSessionImageUploads() {
 function closeSessionInterfaces() {
   cancelSessionImageUploads()
   window.dispatchEvent(new Event('asaar:session-invalidated'))
-  document.querySelectorAll<HTMLElement>('.modal-backdrop, .invoice-price-editor-backdrop, .invoice-customer-export-backdrop, .image-help-backdrop, .image-viewer-backdrop, #app-toast').forEach((element) => element.remove())
+  document.querySelectorAll<HTMLElement>('.modal-backdrop, .invoice-price-editor-backdrop, .invoice-customer-export-backdrop, .image-help-backdrop, .image-viewer-backdrop, .privacy-policy-dialog, #app-toast').forEach((element) => element.remove())
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = undefined
 }
@@ -1477,6 +1477,7 @@ function renderSettingsNew() {
   if (!currentUser) return
   const element = modal(`
     <button class="modal-close" aria-label="إغلاق">${svg('close')}</button>
+    <button class="settings-policy-trigger" id="settings-policy-trigger" type="button">سياسة الخصوصية</button>
     <p class="eyebrow">تفضيلاتك</p>
     <div class="settings-tabs">
       <button class="active" data-settings-tab="currency">العملة</button>
@@ -1487,6 +1488,68 @@ function renderSettingsNew() {
     <div id="settings-content"></div>
   `)
   element.querySelector('.modal-close')!.addEventListener('click', () => element.remove())
+  const policyTrigger = element.querySelector<HTMLButtonElement>('#settings-policy-trigger')!
+  policyTrigger.addEventListener('click', () => {
+    const policyDialog = document.createElement('dialog')
+    policyDialog.className = 'privacy-policy-dialog'
+    policyDialog.setAttribute('aria-labelledby', 'privacy-policy-title')
+    policyDialog.dir = 'rtl'
+    policyDialog.innerHTML = `
+      <button class="modal-close privacy-policy-close" type="button" aria-label="إغلاق">${svg('close')}</button>
+      <h2 id="privacy-policy-title">🔐 تنويه هام بشأن الخصوصية والأمانة وحماية البيانات</h2>
+      <div class="privacy-policy-content">
+        <p>نحرص على أن تكون الأمانة والشفافية أساس التعامل مع جميع مستخدمي هذا التطبيق، ولذلك نود توضيح بعض الأمور المتعلقة بخصوصية البيانات وصلاحيات مطوّر التطبيق.</p>
+        <section>
+          <h3>أولاً: خصوصية البيانات الشخصية</h3>
+          <ul>
+            <li>لا يملك مطوّر التطبيق صلاحية الاطلاع على كلمات مرور المستخدمين، ولا يتمكن من معرفة كلمات المرور الفعلية أو استخدامها.</li>
+            <li>لا يملك التطبيق صلاحية الوصول إلى الصور أو الملفات أو جهات الاتصال أو الرسائل أو بيانات الهاتف الشخصية، إلا إذا كانت هناك صلاحية محددة ومعلنة يوافق المستخدم على منحها لغرض واضح.</li>
+            <li>لا يتم الوصول إلى بيانات الهاتف أو استخدام موارده لأغراض غير معلنة أو غير مرتبطة بوظائف التطبيق.</li>
+          </ul>
+        </section>
+        <section>
+          <h3>ثانياً: صلاحيات مطوّر التطبيق</h3>
+          <p>من الطبيعي أن يمتلك مطوّر التطبيق بعض الصلاحيات التقنية المرتبطة بإدارة النظام وتطويره وصيانته، وقد تتيح له هذه الصلاحيات الوصول إلى بعض البيانات التي يخزنها التطبيق.</p>
+          <p>ولكن هذه الصلاحيات لا تُعد تصريحاً بالاطلاع على خصوصيات المستخدمين أو أسرار أنشطتهم التجارية.</p>
+          <p>وتقتصر الاستفادة منها على الأغراض التقنية المشروعة، مثل:</p>
+          <ul>
+            <li>صيانة التطبيق وإصلاح الأخطاء البرمجية.</li>
+            <li>معالجة المشكلات التقنية عند الحاجة.</li>
+            <li>إجراء التحديثات والتطويرات اللازمة.</li>
+            <li>تقديم الدعم الفني والتحقق من الأعطال، بالقدر الضروري وبما يتوافق مع إذن صاحب البيانات.</li>
+          </ul>
+          <p>ولا يجوز استخدام هذه الصلاحيات للتجسس على المبيعات أو الاطلاع على أسعار المنتجات أو متابعة النشاط التجاري أو استغلال معلومات المستخدمين لمصالح شخصية.</p>
+        </section>
+        <section>
+          <h3>ثالثاً: الأمانة مسؤولية قبل أن تكون صلاحية</h3>
+          <p>قال الله سبحانه وتعالى:</p>
+          <p class="privacy-policy-quote">﴿وَلَا تَجَسَّسُوا﴾ [الحجرات: 12].</p>
+          <p>وقال رسول الله ﷺ:</p>
+          <p class="privacy-policy-quote">«ولا تجسسوا، ولا تحسسوا» متفق عليه.</p>
+          <p>ونؤمن بأن امتلاك القدرة التقنية على الوصول إلى بعض المعلومات لا يمنح صاحبها الحق في الاطلاع عليها دون إذن.</p>
+          <p><strong>فالأمانة الحقيقية ليست في عدم القدرة على الوصول إلى خصوصيات الآخرين، بل في احترام خصوصياتهم حتى عندما تكون القدرة متاحة.</strong></p>
+          <p>نحترم ثقتكم، ونعتبر بياناتكم وأسرار أعمالكم أمانة يجب المحافظة عليها، ونسعى دائماً إلى تقديم تجربة آمنة قائمة على الاحترام والصدق وحفظ الحقوق.</p>
+          <p>نسأل الله أن يرزقنا وإياكم الأمانة والإخلاص، وأن يعيننا على حفظ الأمانات وأداء الحقوق.</p>
+        </section>
+      </div>
+    `
+    const closePolicy = () => policyDialog.close()
+    policyDialog.querySelector('.privacy-policy-close')!.addEventListener('click', closePolicy)
+    policyDialog.addEventListener('click', (event) => {
+      if (event.target !== policyDialog) return
+      const bounds = policyDialog.getBoundingClientRect()
+      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) {
+        closePolicy()
+      }
+    })
+    policyDialog.addEventListener('close', () => {
+      policyDialog.remove()
+      if (policyTrigger.isConnected) policyTrigger.focus()
+    }, { once: true })
+    document.body.append(policyDialog)
+    policyDialog.showModal()
+    policyDialog.querySelector<HTMLButtonElement>('.privacy-policy-close')!.focus()
+  })
   const content = element.querySelector<HTMLElement>('#settings-content')!
   const renderTab = (tab: string) => {
     element.querySelectorAll<HTMLButtonElement>('[data-settings-tab]').forEach((button) => button.classList.toggle('active', button.dataset.settingsTab === tab))
