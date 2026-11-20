@@ -2550,6 +2550,8 @@ function renderInvoiceModal() {
         <p class="invoice-export-number">فاتورة رقم <bdi dir="ltr">${invoiceNumber}</bdi></p>
         <label for="invoice-customer-export-name">اسم الزبون <span>(اختياري)</span></label>
         <input id="invoice-customer-export-name" type="text" maxlength="80" placeholder="أدخل اسم الزبون إن رغبت لطباعته مع الفاتورة" autocomplete="name">
+        <label for="invoice-customer-export-phone">رقم هاتف الزبون <span>(اختياري)</span></label>
+        <input id="invoice-customer-export-phone" type="tel" maxlength="24" inputmode="tel" placeholder="أدخل رقم هاتف الزبون إن رغبت لطباعته مع الفاتورة" autocomplete="tel">
         <label for="invoice-organizer-export-name">اسم منظم الفاتورة <span>(اختياري)</span></label>
         <input id="invoice-organizer-export-name" type="text" maxlength="80" placeholder="أدخل اسم منظم الفاتورة إن رغبت لطباعته مع الفاتورة" autocomplete="name">
         <div class="invoice-export-summary">
@@ -2589,6 +2591,7 @@ function renderInvoiceModal() {
       </section>
     `
     const nameInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-name')!
+    const phoneInput = backdrop.querySelector<HTMLInputElement>('#invoice-customer-export-phone')!
     const organizerInput = backdrop.querySelector<HTMLInputElement>('#invoice-organizer-export-name')!
     const percentageInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-percentage')!
     const amountInput = backdrop.querySelector<HTMLInputElement>('#invoice-discount-amount')!
@@ -2671,15 +2674,16 @@ function renderInvoiceModal() {
     backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-cancel')!.addEventListener('click', closeDialog)
     backdrop.querySelector<HTMLButtonElement>('.invoice-customer-export-confirm')!.addEventListener('click', () => {
       const customerName = nameInput.value.trim()
+      const customerPhone = phoneInput.value.trim()
       const organizerName = organizerInput.value.trim()
       const activeDiscount = getActiveDiscount()
       const discount = activeDiscount ? { ...activeDiscount, printOnInvoice: printDiscountInput.checked } : null
       const format = backdrop.querySelector<HTMLInputElement>('input[name="invoice-export-format"]:checked')!.value
       closeDialog()
       if (format === 'excel') {
-        void exportInvoiceToExcel(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, discount, currency, getInvoiceNumber)
+        void exportInvoiceToExcel(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, customerPhone, organizerName, discount, currency, getInvoiceNumber)
       } else {
-        void exportInvoiceToImage(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, organizerName, discount, currency, getInvoiceNumber, format === 'image-high' ? 2 : 1)
+        void exportInvoiceToImage(button, invoiceType, exportQuantities, exportPriceOverrides, customerName, customerPhone, organizerName, discount, currency, getInvoiceNumber, format === 'image-high' ? 2 : 1)
       }
     })
     backdrop.addEventListener('click', (event) => {
@@ -2755,6 +2759,7 @@ async function exportInvoiceToExcel(
   quantities: Map<string, number>,
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
+  customerPhone: string,
   organizerName: string,
   discount: InvoiceDiscount | null,
   currency: 'usd' | 'syp',
@@ -2809,6 +2814,11 @@ async function exportInvoiceToExcel(
         { text: 'الزبون: ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
         { text: customerName || '\u00a0'.repeat(30), font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
         { text: ' المحترم  |  ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+        ...(customerPhone ? [
+          { text: 'هاتف الزبون: ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+          { text: customerPhone, font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FF203044' } } },
+          { text: '  |  ', font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
+        ] : []),
         { text: 'منظم الفاتورة: ', font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
         { text: organizerName || '\u00a0'.repeat(30), font: { name: 'Arial', size: 12, bold: true, color: { argb: 'FFC62828' } } },
         { text: `  |  التاريخ: ${dateValue}  |  الوقت: ${timeValue}`, font: { name: 'Arial', size: 12, bold: false, color: { argb: 'FF203044' } } },
@@ -2896,6 +2906,7 @@ async function exportInvoiceToImage(
   quantities: Map<string, number>,
   priceOverrides: Map<string, Partial<Record<InvoiceType, InvoicePriceOverride>>>,
   customerName: string,
+  customerPhone: string,
   organizerName: string,
   discount: InvoiceDiscount | null,
   currency: 'usd' | 'syp',
@@ -3015,6 +3026,11 @@ async function exportInvoiceToImage(
         { text: customerName, color: '#c62828', bold: true, reserveName: true },
         { text: 'المحترم', color: '#203044', bold: false },
         { text: ' | ', color: '#203044', bold: false },
+        ...(customerPhone ? [
+          { text: 'هاتف الزبون:', color: '#203044', bold: false },
+          { text: customerPhone, color: '#203044', bold: true },
+          { text: ' | ', color: '#203044', bold: false },
+        ] : []),
         { text: 'منظم الفاتورة:', color: '#c62828', bold: true },
         { text: organizerName, color: '#c62828', bold: true, reserveName: true },
         { text: ' | ', color: '#203044', bold: false },

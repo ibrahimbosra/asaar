@@ -574,7 +574,7 @@ body.dark-mode .app-toast { border-color: #2b3b49; border-right-color: #ff8a75; 
 .invoice-product-prices { display: flex; align-items: center; justify-content: flex-end; gap: 5px; white-space: nowrap; }
 .invoice-product-price-values { display: grid; justify-items: end; gap: 2px; }
 .invoice-price-edit { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border: 1px solid #b5d9d4; border-radius: 8px; background: #edf8f6; color: var(--teal); cursor: pointer; }
-.invoice-price-edit-corner { position: absolute; top: -10px; left: -10px; z-index: 2; width: 20px; height: 20px; flex: 0 0 20px; border-radius: 50%; padding: 0; }
+.invoice-price-edit-corner { position: absolute; top: -10px; right: -10px; left: auto; z-index: 2; width: 20px; height: 20px; flex: 0 0 20px; border-radius: 50%; padding: 0; }
 .invoice-price-edit:hover { background: var(--teal); color: #fff; }
 .invoice-price-edit:focus-visible { outline: 3px solid rgba(0, 125, 121, .35); outline-offset: 2px; }
 .invoice-price-edit svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -818,6 +818,7 @@ body.dark-mode .bulk-name-error.is-table-duplicate { background: #493d20; color:
   .settings-tabs { gap: 2px; }
   .settings-tabs button { min-width: 0; padding: 6px 1px; font-size: 10px; white-space: nowrap; }
   .invoice-customer-export-dialog #invoice-customer-export-name::placeholder,
+  .invoice-customer-export-dialog #invoice-customer-export-phone::placeholder,
   .invoice-customer-export-dialog #invoice-organizer-export-name::placeholder { font-size: 10px; }
   .invoice-export-footer-row { gap: 5px; }
   .invoice-export-footer-row > p { font-size: 10px; white-space: nowrap; }
@@ -831,7 +832,7 @@ body.dark-mode .bulk-name-error.is-table-duplicate { background: #493d20; color:
   .invoice-product-secondary-price { gap: 2px; font-size: 8px; }
   .invoice-price-edit { width: 24px; height: 24px; flex-basis: 24px; border-radius: 6px; }
   .invoice-price-edit svg { width: 12px; height: 12px; }
-  .invoice-price-edit-corner { top: -9px; left: -9px; width: 18px; height: 18px; flex-basis: 18px; border-radius: 50%; }
+  .invoice-price-edit-corner { top: -9px; right: -9px; left: auto; width: 18px; height: 18px; flex-basis: 18px; border-radius: 50%; }
   .invoice-price-edit-corner svg { width: 10px; height: 10px; }
   .invoice-quantity-controls { width: 84px; gap: 6px; }
   .invoice-quantity-step-stack { flex-basis: 36px; }
